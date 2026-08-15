@@ -180,9 +180,11 @@ Reads *are* retried — with backoff and jitter, on connection failures and 5xx.
 | | `orders.create()` | `orders.create_sync()` |
 |---|---|---|
 | Sends | `Sync: false` | `Sync: true` |
-| Quantity | unlimited | max 25 |
+| Quantity | no documented limit | max 25 |
 | Returns | `order_uid` only | `order_uid` **and vouchers** |
 | Delivery | Huuray sends via your template | you handle the codes |
+
+"No documented limit" is precise, not a promise: the API specification states a cap only for synchronous orders. It says nothing about an asynchronous maximum, so this client imposes none — but a very large single order is untested territory. Ask your Huuray contact before relying on one.
 
 They are separate methods because their return types differ. Reading `vouchers` on an asynchronous order is a mistake a type checker should catch, not a runtime surprise. (This is about the API's `Sync` flag, not about `async def` — both are available on `HuurayClient` and `AsyncHuurayClient` alike.)
 
