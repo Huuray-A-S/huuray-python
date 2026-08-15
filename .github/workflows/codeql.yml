@@ -13,6 +13,12 @@ permissions:
 
 jobs:
   analyze:
+    # Code scanning requires GitHub Advanced Security, which is included for
+    # public repositories and licensed separately for private ones. While this
+    # repository is private the analysis itself succeeds and only the upload
+    # fails, which would leave a permanent red X that means nothing. Skip
+    # instead; this starts running by itself the moment the repo goes public.
+    if: github.event.repository.visibility == 'public'
     runs-on: ubuntu-latest
     permissions:
       security-events: write
