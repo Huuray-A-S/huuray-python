@@ -12,6 +12,7 @@ import json
 import time
 from dataclasses import dataclass
 from typing import Any, Callable, Generic, Optional, TypeVar
+from urllib.parse import urlsplit
 
 import httpx
 
@@ -91,6 +92,18 @@ class _BaseClient:
         self._api_token = api_token
         self._api_secret = api_secret
         self._base_url = (base_url or DEFAULT_BASE_URL).rstrip("/")
+
+        # Fail at construction, not at the first request. A base_url of "/v4" or
+        # "api.huuray.com" (no scheme) would otherwise be accepted here and only
+        # surface later as a confusing transport error — and requiring http(s)
+        # keeps credentials from being aimed at a file:// or ftp:// target by a
+        # configuration typo.
+        parsed = urlsplit(self._base_url)
+        if parsed.scheme not in ("http", "https") or not parsed.netloc:
+            raise HuurayConfigError(
+                f"base_url {base_url!r} is not an absolute http(s) URL. "
+                f"Expected something like {DEFAULT_BASE_URL!r}."
+            )
         self._hash_encoding: HashEncoding = hash_encoding
         self._timeout = timeout
         self._retry = retry if retry is not None else DEFAULT_RETRY

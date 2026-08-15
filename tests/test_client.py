@@ -39,6 +39,27 @@ class TestConstruction:
         with pytest.raises(HuurayConfigError):
             HuurayClient(api_token="t", api_secret="")
 
+    @pytest.mark.parametrize(
+        "bad",
+        [
+            # "/v4" is the case that differs by platform in other languages:
+            # not absolute on Windows, a valid file:// URI on Linux and macOS.
+            # Validating the scheme makes the behaviour identical everywhere.
+            "/v4",
+            "v4",
+            "api.huuray.com",
+            "file:///etc/passwd",
+            "ftp://example.test",
+        ],
+    )
+    def test_rejects_a_base_url_that_is_not_absolute_http(self, bad):
+        with pytest.raises(HuurayConfigError):
+            HuurayClient(api_token="t", api_secret="s", base_url=bad)
+
+    @pytest.mark.parametrize("good", ["https://api.huuray.com", "http://localhost:8080"])
+    def test_accepts_an_absolute_http_base_url(self, good):
+        assert HuurayClient(api_token="t", api_secret="s", base_url=good) is not None
+
     def test_defaults_to_the_production_host(self):
         client, calls = make_client()
         client.balances.list()
