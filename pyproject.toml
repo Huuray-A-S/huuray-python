@@ -1,0 +1,164 @@
+[build-system]
+requires = ["hatchling>=1.21"]
+build-backend = "hatchling.build"
+
+[project]
+name = "huuray"
+dynamic = ["version"]
+description = "Official Python client for the Huuray API v4 — send digital gift cards and rewards to recipients in 170+ countries."
+readme = "README.md"
+license = { file = "LICENSE" }
+authors = [{ name = "Huuray A/S", email = "rg@huuray.com" }]
+requires-python = ">=3.9"
+keywords = [
+    "huuray",
+    "gift-card",
+    "giftcard",
+    "gift-cards",
+    "rewards",
+    "incentives",
+    "digital-rewards",
+    "vouchers",
+    "employee-rewards",
+    "api-client",
+    "sdk",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Topic :: Office/Business :: Financial",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Typing :: Typed",
+]
+
+# httpx is the only runtime dependency, and stays the only one.
+#
+# Floor is 0.27.1 deliberately: that is the first release whose Client.send()
+# copies the client timeout onto a caller-built Request. This SDK builds its own
+# Request (see client._build_request), so on 0.24-0.27.0 the timeout silently
+# never applied and a hung connection blocked forever — fatal for an order,
+# whose outcome then stays unknown with nothing raised. The request now carries
+# its own timeout extension regardless, so this floor is defence in depth.
+dependencies = ["httpx>=0.27.1"]
+
+[project.urls]
+Homepage = "https://huuray.com"
+Documentation = "https://github.com/Huuray-A-S/huuray-python#readme"
+Repository = "https://github.com/Huuray-A-S/huuray-python"
+Changelog = "https://github.com/Huuray-A-S/huuray-python/blob/main/CHANGELOG.md"
+Issues = "https://github.com/Huuray-A-S/huuray-python/issues"
+"API reference" = "https://api.huuray.com/swagger/index.html"
+
+[project.scripts]
+huuray = "huuray.cli:main"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
+    "mypy>=1.8",
+    "ruff>=0.9",
+]
+
+[tool.hatch.version]
+path = "src/huuray/_version.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/huuray"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "src/huuray",
+    "tests",
+    "examples",
+    "openapi/huuray-v4.json",
+    "scripts",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+# A coroutine created and never awaited is a silent no-op — in this SDK that
+# could be an order that was never actually placed. Promote it to a failure.
+#
+# PytestReturnNotNoneWarning is promoted too: it is what pytest emits when a
+# helper is accidentally named test_* and collected as a test. Such a "test"
+# asserts nothing and always passes, so it must never be merely a warning.
+filterwarnings = [
+    "error::RuntimeWarning",
+    "error::pytest.PytestReturnNotNoneWarning",
+]
+
+[tool.mypy]
+# 3.10, not the 3.9 floor in requires-python, and not by preference: mypy has to
+# parse the installed dependency tree, and anyio (via httpx) and pytest are both
+# 3.10-only *source* — analysing them as 3.9 dies on their match statements
+# before a single file of this package is checked. mypy 2.x refuses to be told
+# 3.9 at all.
+#
+# 3.9 support is not left unverified by this: the CI matrix runs the entire test
+# suite on 3.9, which exercises every module by execution rather than inference.
+# Raise this only when requires-python and the CI matrix move together.
+python_version = "3.10"
+strict = true
+files = ["src/huuray", "tests", "examples", "scripts"]
+warn_unreachable = true
+
+# The library itself is checked in full strict mode. Tests are checked too — a
+# broken fake transport would hide a real bug — but their functions are
+# deliberately unannotated, in the usual pytest style.
+[[tool.mypy.overrides]]
+module = "tests.*"
+disallow_untyped_defs = false
+disallow_untyped_calls = false
+disallow_incomplete_defs = false
+warn_return_any = false
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "A",    # flake8-builtins
+    "E",    # pycodestyle
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # isort
+    "N",    # pep8-naming
+    "UP",   # pyupgrade
+    "B",    # flake8-bugbear
+    "C4",   # comprehensions
+    "SIM",  # simplify
+    "RUF",  # ruff-specific
+]
+ignore = [
+    # `Optional[X]` stays: these annotations are read on Python 3.9, where the
+    # union syntax is only safe because of `from __future__ import annotations`,
+    # and spelling it out reads better in a public signature.
+    "UP007",
+    "UP045",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests carry long fixture literals and a class-level inventory constant that is
+# deliberately a plain dict.
+"tests/*" = ["E501", "RUF012"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["huuray"]

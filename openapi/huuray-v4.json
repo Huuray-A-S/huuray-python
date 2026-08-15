@@ -1,0 +1,1841 @@
+{
+  "openapi": "3.0.4",
+  "info": {
+    "title": "Huuray API",
+    "description": "Huuray API for B2B customers (last updated april 2025)",
+    "contact": {
+      "name": "Support",
+      "email": "tech@huuray.com"
+    },
+    "version": "v4"
+  },
+  "paths": {
+    "/v4/Balance": {
+      "get": {
+        "tags": [
+          "Balance"
+        ],
+        "summary": "Used to get available balances",
+        "description": "The amount of available balances on the B2B account in minor units with currency",
+        "parameters": [
+          {
+            "name": "X-API-NONCE",
+            "in": "header",
+            "description": "A random value that can only be used once every 60 days. (max 50 characters)<br /><small>(this prevents your message from being re-transmitted, and thereby also replay attacks)</small>",
+            "required": true
+          },
+          {
+            "name": "X-API-HASH",
+            "in": "header",
+            "description": "The SHA512 hash of a concatenated string containing the following: ( API-SECRET + NONCE ).<br /><small>(this is used to authenticate you)</small>",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BalanceResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Response"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Response"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Response"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Response"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "ApiToken": []
+          }
+        ]
+      }
+    },
+    "/v4/Cancel": {
+      "delete": {
+        "tags": [
+          "Cancel"
+        ],
+        "summary": "Used to Cancel Orders or Giftcards",
+        "description": "n/a",
+        "parameters": [
+          {
+            "name": "X-API-NONCE",
+            "in": "header",
+            "description": "A random value that can only be used once every 60 days. (max 50 characters)<br /><small>(this prevents your message from being re-transmitted, and thereby also replay attacks)</small>",
+            "required": true
+          },
+          {
+            "name": "X-API-HASH",
+            "in": "header",
+            "description": "The SHA512 hash of a concatenated string containing the following: ( API-SECRET + NONCE ).<br /><small>(this is used to authenticate you)</small>",
+            "required": true
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CancelRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CancelResponse"
+                }
+              }
+            }
+          },
+          "206": {
+            "description": "Partial Content",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CancelResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Response"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Response"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Response"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Response"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Content",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Response"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Response"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "ApiToken": []
+          }
+        ]
+      }
+    },
+    "/v4/Catalogue": {
+      "post": {
+        "tags": [
+          "Catalogue"
+        ],
+        "summary": "Used to get a list of the available products",
+        "description": "The list will include both texts and images. It will also include your currently available discount if \"All\" is set to \"False\"",
+        "parameters": [
+          {
+            "name": "X-API-NONCE",
+            "in": "header",
+            "description": "A random value that can only be used once every 60 days. (max 50 characters)<br /><small>(this prevents your message from being re-transmitted, and thereby also replay attacks)</small>",
+            "required": true
+          },
+          {
+            "name": "X-API-HASH",
+            "in": "header",
+            "description": "The SHA512 hash of a concatenated string containing the following: ( API-SECRET + NONCE ).<br /><small>(this is used to authenticate you)</small>",
+            "required": true
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CatalogueRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogueResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Response"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Response"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Response"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Response"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Response"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "ApiToken": []
+          }
+        ]
+      }
+    },
+    "/v4/ExchangeRates": {
+      "get": {
+        "tags": [
+          "ExchangeRates"
+        ],
+        "summary": "Used to retrieve current exchange rate data",
+        "description": "The exchange rate data consists of exchange rate and spread. The currency parameters must be ISO-3 currency codes.",
+        "parameters": [
+          {
+            "name": "FromCurrency",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "ToCurrency",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-API-NONCE",
+            "in": "header",
+            "description": "A random value that can only be used once every 60 days. (max 50 characters)<br /><small>(this prevents your message from being re-transmitted, and thereby also replay attacks)</small>",
+            "required": true
+          },
+          {
+            "name": "X-API-HASH",
+            "in": "header",
+            "description": "The SHA512 hash of a concatenated string containing the following: ( API-SECRET + NONCE ).<br /><small>(this is used to authenticate you)</small>",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExchangeRatesResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Response"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Response"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Response"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Response"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Response"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "ApiToken": []
+          }
+        ]
+      }
+    },
+    "/v4/Order": {
+      "post": {
+        "tags": [
+          "Order"
+        ],
+        "summary": "Used to order giftcards",
+        "description": "The giftcards will be sent out as redeemable links. They will be sent out automatically via Email or SMS, or returned in a callback if you have set one up and enabled this feature",
+        "parameters": [
+          {
+            "name": "X-API-NONCE",
+            "in": "header",
+            "description": "A random value that can only be used once every 60 days. (max 50 characters)<br /><small>(this prevents your message from being re-transmitted, and thereby also replay attacks)</small>",
+            "required": true
+          },
+          {
+            "name": "X-API-HASH",
+            "in": "header",
+            "description": "The SHA512 hash of a concatenated string containing the following: ( API-SECRET + NONCE ).<br /><small>(this is used to authenticate you)</small>",
+            "required": true
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OrderRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderResponse"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderResponse"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Response"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Response"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Response"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Response"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Content",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Response"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Response"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "ApiToken": []
+          }
+        ]
+      }
+    },
+    "/v4/Resend": {
+      "post": {
+        "tags": [
+          "Resend"
+        ],
+        "summary": "Used to Resend Orders or Giftcards",
+        "description": "n/a",
+        "parameters": [
+          {
+            "name": "X-API-NONCE",
+            "in": "header",
+            "description": "A random value that can only be used once every 60 days. (max 50 characters)<br /><small>(this prevents your message from being re-transmitted, and thereby also replay attacks)</small>",
+            "required": true
+          },
+          {
+            "name": "X-API-HASH",
+            "in": "header",
+            "description": "The SHA512 hash of a concatenated string containing the following: ( API-SECRET + NONCE ).<br /><small>(this is used to authenticate you)</small>",
+            "required": true
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResendRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResendResponse"
+                }
+              }
+            }
+          },
+          "206": {
+            "description": "Partial Content",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResendResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Response"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Response"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Response"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Response"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Content",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Response"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Response"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "ApiToken": []
+          }
+        ]
+      }
+    },
+    "/v4/Search": {
+      "post": {
+        "tags": [
+          "Search"
+        ],
+        "summary": "Used to search through giftcards from previous orders",
+        "description": "n/a",
+        "parameters": [
+          {
+            "name": "X-API-NONCE",
+            "in": "header",
+            "description": "A random value that can only be used once every 60 days. (max 50 characters)<br /><small>(this prevents your message from being re-transmitted, and thereby also replay attacks)</small>",
+            "required": true
+          },
+          {
+            "name": "X-API-HASH",
+            "in": "header",
+            "description": "The SHA512 hash of a concatenated string containing the following: ( API-SECRET + NONCE ).<br /><small>(this is used to authenticate you)</small>",
+            "required": true
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SearchRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Response"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Response"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Response"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Response"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Response"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "ApiToken": []
+          }
+        ]
+      }
+    },
+    "/v4/Stock": {
+      "post": {
+        "tags": [
+          "Stock"
+        ],
+        "summary": "Used to check the current stock of a product",
+        "description": "n/a",
+        "parameters": [
+          {
+            "name": "X-API-NONCE",
+            "in": "header",
+            "description": "A random value that can only be used once every 60 days. (max 50 characters)<br /><small>(this prevents your message from being re-transmitted, and thereby also replay attacks)</small>",
+            "required": true
+          },
+          {
+            "name": "X-API-HASH",
+            "in": "header",
+            "description": "The SHA512 hash of a concatenated string containing the following: ( API-SECRET + NONCE ).<br /><small>(this is used to authenticate you)</small>",
+            "required": true
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StockRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StockResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Response"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Response"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Response"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Response"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Content",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Response"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Response"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "ApiToken": []
+          }
+        ]
+      }
+    },
+    "/v4/Template": {
+      "post": {
+        "tags": [
+          "Template"
+        ],
+        "summary": "Used to get a list of the available templates",
+        "description": "The list will include both texts and type",
+        "parameters": [
+          {
+            "name": "X-API-NONCE",
+            "in": "header",
+            "description": "A random value that can only be used once every 60 days. (max 50 characters)<br /><small>(this prevents your message from being re-transmitted, and thereby also replay attacks)</small>",
+            "required": true
+          },
+          {
+            "name": "X-API-HASH",
+            "in": "header",
+            "description": "The SHA512 hash of a concatenated string containing the following: ( API-SECRET + NONCE ).<br /><small>(this is used to authenticate you)</small>",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TemplateResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Response"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Response"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Response"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Response"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Response"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "ApiToken": []
+          }
+        ]
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "BalanceItem": {
+        "title": "Balance Item",
+        "type": "object",
+        "properties": {
+          "Currency": {
+            "type": "string",
+            "description": "The currency as ISO alpha-3 code",
+            "nullable": true
+          },
+          "Balance": {
+            "type": "integer",
+            "description": "The available balance in minor units",
+            "format": "int64"
+          },
+          "Master": {
+            "type": "boolean",
+            "description": "An option that shows whether the currency is a master currency"
+          }
+        },
+        "additionalProperties": false,
+        "description": "An object containing information about available balance for currency"
+      },
+      "BalanceResponse": {
+        "title": "Balance Response",
+        "type": "object",
+        "properties": {
+          "Balances": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BalanceItem"
+            },
+            "description": "The list of balances",
+            "nullable": true
+          },
+          "Status": {
+            "type": "integer",
+            "description": "HttpStatus code for the response",
+            "format": "int32"
+          },
+          "Message": {
+            "type": "string",
+            "description": "Deprecated, use StatusMessage instead. Error message describing an error that occurred during the processing of the request",
+            "nullable": true,
+            "deprecated": true
+          },
+          "StatusMessage": {
+            "type": "string",
+            "description": "Status message describing an error that occurred during the processing of the request",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "The response containing available balances with currency"
+      },
+      "CancelRequest": {
+        "title": "Cancel Request",
+        "required": [
+          "OrderUID"
+        ],
+        "type": "object",
+        "properties": {
+          "OrderUID": {
+            "type": "string",
+            "description": "The UID of the Order you want to Cancel from"
+          },
+          "VoucherID": {
+            "type": "integer",
+            "description": "The ID of the specific Voucher in the given Order that you want to Cancel. If null is given, we will attempt to Cancel the entire Order",
+            "format": "int32",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "An object containing all the necessary information for Canceling giftcards"
+      },
+      "CancelResponse": {
+        "title": "Cancel Response",
+        "type": "object",
+        "properties": {
+          "OrderUID": {
+            "type": "string",
+            "description": "The UID of the Order that was attempted to be cancelled",
+            "nullable": true
+          },
+          "OrderCancelled": {
+            "type": "boolean",
+            "description": "An option that shows whether the Order was cancelled"
+          },
+          "Vouchers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CancelVoucher"
+            },
+            "description": "A list of the individual Vouchers in the Order that was attempted to be cancelled",
+            "nullable": true
+          },
+          "Status": {
+            "type": "integer",
+            "description": "HttpStatus code for the response",
+            "format": "int32"
+          },
+          "Message": {
+            "type": "string",
+            "description": "Deprecated, use StatusMessage instead. Error message describing an error that occurred during the processing of the request",
+            "nullable": true,
+            "deprecated": true
+          },
+          "StatusMessage": {
+            "type": "string",
+            "description": "Status message describing an error that occurred during the processing of the request",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "The response from a Cancel request"
+      },
+      "CancelVoucher": {
+        "title": "Voucher (Cancel)",
+        "type": "object",
+        "properties": {
+          "ID": {
+            "type": "integer",
+            "description": "The ID of the Voucher that was attempted to be cancelled",
+            "format": "int32"
+          },
+          "Cancelled": {
+            "type": "boolean",
+            "description": "An option that shows whether the Voucher was cancelled"
+          }
+        },
+        "additionalProperties": false,
+        "description": "An object describing the outcome of an Voucher Cancel"
+      },
+      "CatalogueProduct": {
+        "title": "Product (Catalogue)",
+        "type": "object",
+        "properties": {
+          "ProductToken": {
+            "type": "string",
+            "description": "Unique product ID<br />Only part of the response if the 'all' request-parameter is 'false'",
+            "nullable": true
+          },
+          "BrandName": {
+            "type": "string",
+            "description": "Products brand name",
+            "nullable": true
+          },
+          "Country": {
+            "type": "string",
+            "description": "Country name",
+            "nullable": true
+          },
+          "CountryCode": {
+            "type": "string",
+            "description": "Country IsoAlpha2 code",
+            "nullable": true
+          },
+          "Discount": {
+            "type": "number",
+            "description": "Discount in percent",
+            "format": "decimal(5,2)",
+            "nullable": true
+          },
+          "Denominations": {
+            "type": "string",
+            "description": "Product denominations separated by commas",
+            "nullable": true
+          },
+          "Currency": {
+            "type": "string",
+            "description": "Currency IsoAlpha3 code",
+            "nullable": true
+          },
+          "RealTimeStock": {
+            "type": "string",
+            "description": "Real-time or Stock",
+            "nullable": true
+          },
+          "Categories": {
+            "type": "string",
+            "description": "Product categories separated by commas",
+            "nullable": true
+          },
+          "LanguageCode": {
+            "type": "string",
+            "description": "Language IsoAlpha2 code",
+            "nullable": true
+          },
+          "Active": {
+            "type": "boolean",
+            "description": "Active status"
+          },
+          "BrandDescription": {
+            "type": "string",
+            "description": "Brand description in original language",
+            "nullable": true
+          },
+          "RedemptionInstructions": {
+            "type": "string",
+            "description": "Redemption instructions in original language",
+            "nullable": true
+          },
+          "LogoFile": {
+            "type": "string",
+            "description": "Logo file url",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "An object containing information about product"
+      },
+      "CatalogueRequest": {
+        "title": "Product Catalogue Request",
+        "type": "object",
+        "properties": {
+          "All": {
+            "type": "boolean",
+            "description": "Set this option to 'true' to fetch the entire product catalog; 'false' to limit the search to the products that your account has access to",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "An object containing the required input for the product catalogue API"
+      },
+      "CatalogueResponse": {
+        "title": "Product Catalogue Response",
+        "type": "object",
+        "properties": {
+          "Products": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CatalogueProduct"
+            },
+            "description": "The list of products",
+            "nullable": true
+          },
+          "Status": {
+            "type": "integer",
+            "description": "HttpStatus code for the response",
+            "format": "int32"
+          },
+          "Message": {
+            "type": "string",
+            "description": "Deprecated, use StatusMessage instead. Error message describing an error that occurred during the processing of the request",
+            "nullable": true,
+            "deprecated": true
+          },
+          "StatusMessage": {
+            "type": "string",
+            "description": "Status message describing an error that occurred during the processing of the request",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "The response containing products"
+      },
+      "ExchangeRatesResponse": {
+        "title": "Exchange Rates Response",
+        "type": "object",
+        "properties": {
+          "ExchangeRate": {
+            "type": "number",
+            "description": "Exchange rate",
+            "format": "double",
+            "nullable": true
+          },
+          "Spread": {
+            "type": "integer",
+            "description": "Spread in percentage",
+            "format": "int32",
+            "nullable": true
+          },
+          "Status": {
+            "type": "integer",
+            "description": "HttpStatus code for the response",
+            "format": "int32"
+          },
+          "Message": {
+            "type": "string",
+            "description": "Deprecated, use StatusMessage instead. Error message describing an error that occurred during the processing of the request",
+            "nullable": true,
+            "deprecated": true
+          },
+          "StatusMessage": {
+            "type": "string",
+            "description": "Status message describing an error that occurred during the processing of the request",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "The response containing the exchange rate and spread"
+      },
+      "OrderProduct": {
+        "title": "Product (Order)",
+        "required": [
+          "Currency",
+          "Quantity",
+          "Token",
+          "Value"
+        ],
+        "type": "object",
+        "properties": {
+          "Token": {
+            "minLength": 1,
+            "type": "string",
+            "description": "The token used to identify a specific product"
+          },
+          "Value": {
+            "type": "integer",
+            "description": "The value denomination that you want to order. Must be specified in minor units (i.e. $5.00 should be sent as 500)",
+            "format": "int32"
+          },
+          "Currency": {
+            "minLength": 1,
+            "type": "string",
+            "description": "The currency of the product"
+          },
+          "Quantity": {
+            "type": "integer",
+            "description": "The amount of codes you are ordering",
+            "format": "int32"
+          },
+          "Expires": {
+            "type": "string",
+            "description": "An optional time and date for the giftcards to expire. If omitted, the default expiration will be used, and the value cannot exceed the default expiration",
+            "format": "date-time",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "An object containing information about a product"
+      },
+      "OrderRecipient": {
+        "title": "Recipient (Order)",
+        "type": "object",
+        "properties": {
+          "Name": {
+            "type": "string",
+            "description": "The name of the recipient",
+            "nullable": true
+          },
+          "Email": {
+            "type": "string",
+            "description": "The email address of the recipient (required if DeliveryMethod is set to Email)",
+            "nullable": true
+          },
+          "Phone": {
+            "type": "string",
+            "description": "The phone number of the recipient (required if DeliveryMethod is set to SMS)",
+            "nullable": true
+          },
+          "RefID": {
+            "type": "string",
+            "description": "An optional ID that you can use to identify the individual recipient",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "An object containing information about a single recipient"
+      },
+      "OrderRequest": {
+        "title": "Order Request",
+        "required": [
+          "Product",
+          "Sync"
+        ],
+        "type": "object",
+        "properties": {
+          "Product": {
+            "$ref": "#/components/schemas/OrderProduct"
+          },
+          "Sync": {
+            "type": "boolean",
+            "description": "Determines whether the Order is a sync order (If set to true, then quantity is limited to 25 and vouchers are returned in the response)"
+          },
+          "RefID": {
+            "type": "string",
+            "description": "An optional ID that you can use to identify the resulting order with",
+            "nullable": true
+          },
+          "DeliveryTemplateId": {
+            "type": "integer",
+            "description": "The template used to deliver the codes (Email, SMS, or no delivery if null)",
+            "format": "int32",
+            "nullable": true
+          },
+          "DeliveryDatetime": {
+            "type": "string",
+            "description": "An optional future date for delivery to take place, if null delivery will happen as soon as possible",
+            "format": "date-time",
+            "nullable": true
+          },
+          "PersonalMessage": {
+            "type": "string",
+            "description": "An optional message to include in all the SMS/Emails (if applicable)",
+            "nullable": true
+          },
+          "Recipients": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrderRecipient"
+            },
+            "description": "A list of all the recipients. It is required unless DeliveryTemplateId is null. If specified, the count must be either 1 or match Product.Quantity",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "An object containing all the necessary information for ordering giftcards"
+      },
+      "OrderResponse": {
+        "title": "Order Response",
+        "type": "object",
+        "properties": {
+          "OrderUID": {
+            "type": "string",
+            "description": "A unique ID which will be connected to the resulting order",
+            "nullable": true
+          },
+          "RefID": {
+            "type": "string",
+            "description": "The optional ID that you specified in the order request",
+            "nullable": true
+          },
+          "Vouchers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrderVoucher"
+            },
+            "description": "The resulting vouchers for the placed order (contain data only for Sync request)",
+            "nullable": true
+          },
+          "Status": {
+            "type": "integer",
+            "description": "HttpStatus code for the response",
+            "format": "int32"
+          },
+          "Message": {
+            "type": "string",
+            "description": "Deprecated, use StatusMessage instead. Error message describing an error that occurred during the processing of the request",
+            "nullable": true,
+            "deprecated": true
+          },
+          "StatusMessage": {
+            "type": "string",
+            "description": "Status message describing an error that occurred during the processing of the request",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "The response from the Order request"
+      },
+      "OrderVoucher": {
+        "title": "Voucher (Order)",
+        "type": "object",
+        "properties": {
+          "ID": {
+            "type": "integer",
+            "description": "The unique identifier of the voucher (used by resend and cancel endpoints)",
+            "format": "int32",
+            "nullable": true
+          },
+          "Code": {
+            "type": "string",
+            "description": "The redeemable code of the voucher. (This will be blanked unless ReturnCode is enabled in your B2B Account)",
+            "nullable": true
+          },
+          "CVV": {
+            "type": "string",
+            "description": "A value used to verify the authenticity of the voucher (if applicable). (This will be blanked unless ReturnCode is enabled in your B2B Account)",
+            "nullable": true
+          },
+          "RedeemLink": {
+            "type": "string",
+            "description": "The URL to redeem the voucher. (This will be blanked unless ReturnCode is enabled in your B2B Account)",
+            "nullable": true
+          },
+          "Expires": {
+            "type": "string",
+            "description": "The time and date for when the voucher expires",
+            "format": "date-time"
+          },
+          "Recipient": {
+            "$ref": "#/components/schemas/OrderRecipient"
+          }
+        },
+        "additionalProperties": false,
+        "description": "An object containing information about a voucher"
+      },
+      "ResendRequest": {
+        "title": "Resend Request",
+        "required": [
+          "OrderUID"
+        ],
+        "type": "object",
+        "properties": {
+          "OrderUID": {
+            "type": "string",
+            "description": "The UID of the Order for the giftcards that you want to Resend"
+          },
+          "VoucherID": {
+            "type": "integer",
+            "description": "The ID of the specific Voucher in the given Order that you want to Resend. If null is given, we will attempt to Resend the entire Order to all its receivers",
+            "format": "int32",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "An object containing all the necessary information for resending a giftcard"
+      },
+      "ResendResponse": {
+        "title": "Resend Response",
+        "type": "object",
+        "properties": {
+          "NumberOfResends": {
+            "type": "integer",
+            "description": "Shows the number of successful Resends",
+            "format": "int32",
+            "nullable": true
+          },
+          "Status": {
+            "type": "integer",
+            "description": "HttpStatus code for the response",
+            "format": "int32"
+          },
+          "Message": {
+            "type": "string",
+            "description": "Deprecated, use StatusMessage instead. Error message describing an error that occurred during the processing of the request",
+            "nullable": true,
+            "deprecated": true
+          },
+          "StatusMessage": {
+            "type": "string",
+            "description": "Status message describing an error that occurred during the processing of the request",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "The response from a Resend request"
+      },
+      "Response": {
+        "type": "object",
+        "properties": {
+          "Status": {
+            "type": "integer",
+            "description": "HttpStatus code for the response",
+            "format": "int32"
+          },
+          "Message": {
+            "type": "string",
+            "description": "Deprecated, use StatusMessage instead. Error message describing an error that occurred during the processing of the request",
+            "nullable": true,
+            "deprecated": true
+          },
+          "StatusMessage": {
+            "type": "string",
+            "description": "Status message describing an error that occurred during the processing of the request",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "The minimal possible response for any request"
+      },
+      "SearchRecipient": {
+        "title": "Recipient (Search)",
+        "type": "object",
+        "properties": {
+          "Name": {
+            "type": "string",
+            "description": "The name of the recipient (either person or company)",
+            "nullable": true
+          },
+          "Email": {
+            "type": "string",
+            "description": "The e-mail address of the recipient",
+            "nullable": true
+          },
+          "Phone": {
+            "type": "string",
+            "description": "The phone number of the recipient",
+            "nullable": true
+          },
+          "RefID": {
+            "type": "string",
+            "description": "The internal reference to an recipient in your own system",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "An object containing information about a recipient"
+      },
+      "SearchRequest": {
+        "title": "Search Request",
+        "type": "object",
+        "properties": {
+          "OrderUID": {
+            "type": "string",
+            "description": "The unique identifier of the order",
+            "nullable": true
+          },
+          "VoucherID": {
+            "type": "integer",
+            "description": "The unique identifier of the voucher (required to show code in output)",
+            "format": "int32",
+            "nullable": true
+          },
+          "ProductToken": {
+            "type": "string",
+            "description": "The token that identifies the product to be sent out",
+            "nullable": true
+          },
+          "RefID": {
+            "type": "string",
+            "description": "The internal reference to an order in your own system",
+            "nullable": true
+          },
+          "SMSTemplateID": {
+            "type": "integer",
+            "description": "The unique identifier of the SMS template (Required if sending via SMS)",
+            "format": "int32",
+            "nullable": true
+          },
+          "EmailTemplateID": {
+            "type": "integer",
+            "description": "The unique identifier of the e-mail template (Required if sending via e-mail)",
+            "format": "int32",
+            "nullable": true
+          },
+          "DeliveryDatetime": {
+            "type": "string",
+            "description": "The future date for delivery to take place",
+            "format": "date-time",
+            "nullable": true
+          },
+          "RecipientName": {
+            "type": "string",
+            "description": "The name of the recipient (either person or company)",
+            "nullable": true
+          },
+          "RecipientEmail": {
+            "type": "string",
+            "description": "The e-mail address of the recipient (Required if sending via e-mail)",
+            "nullable": true
+          },
+          "RecipientPhone": {
+            "type": "string",
+            "description": "The phone number of the recipient (Required if sending via SMS)",
+            "nullable": true
+          },
+          "RecipientRefID": {
+            "type": "string",
+            "description": "The internal reference to an recipient in your own system",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "An object containing all the informations you can search for"
+      },
+      "SearchResponse": {
+        "title": "Search Response",
+        "type": "object",
+        "properties": {
+          "OrderUID": {
+            "type": "string",
+            "description": "The unique identifier of the matched order",
+            "nullable": true
+          },
+          "RefID": {
+            "type": "string",
+            "description": "The internal reference to the corresponding order in your own system",
+            "nullable": true
+          },
+          "Vouchers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SearchVoucher"
+            },
+            "description": "The list of the matching vouchers",
+            "nullable": true
+          },
+          "Status": {
+            "type": "integer",
+            "description": "HttpStatus code for the response",
+            "format": "int32"
+          },
+          "Message": {
+            "type": "string",
+            "description": "Deprecated, use StatusMessage instead. Error message describing an error that occurred during the processing of the request",
+            "nullable": true,
+            "deprecated": true
+          },
+          "StatusMessage": {
+            "type": "string",
+            "description": "Status message describing an error that occurred during the processing of the request",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "The response from a search"
+      },
+      "SearchVoucher": {
+        "title": "Voucher (Search)",
+        "type": "object",
+        "properties": {
+          "ID": {
+            "type": "integer",
+            "description": "The unique identifier of the voucher (required to show code in output)",
+            "format": "int32",
+            "nullable": true
+          },
+          "Code": {
+            "type": "string",
+            "description": "The redeemable code of the voucher",
+            "nullable": true
+          },
+          "CVV": {
+            "type": "string",
+            "description": "A value used to verify the authenticity of the voucher (if applicable)",
+            "nullable": true
+          },
+          "RedeemLink": {
+            "type": "string",
+            "description": "The URL to redeem the voucher",
+            "nullable": true
+          },
+          "Expires": {
+            "type": "string",
+            "description": "The time and date for when the voucher expires",
+            "format": "date-time"
+          },
+          "Recipient": {
+            "$ref": "#/components/schemas/SearchRecipient"
+          }
+        },
+        "additionalProperties": false,
+        "description": "An object containing information about a voucher"
+      },
+      "StockRequest": {
+        "title": "Stock Request",
+        "required": [
+          "ProductToken"
+        ],
+        "type": "object",
+        "properties": {
+          "ProductToken": {
+            "type": "string",
+            "description": "The unique token for the product you want to get stock information for"
+          },
+          "Value": {
+            "type": "integer",
+            "description": "The value to check availability for. Defaults to the default price for the product if value is null",
+            "format": "int32",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "An object containing the required input for the stock API"
+      },
+      "StockResponse": {
+        "title": "Stock Response",
+        "type": "object",
+        "properties": {
+          "Stock": {
+            "type": "integer",
+            "description": "The full count of giftcards found",
+            "format": "int32",
+            "nullable": true
+          },
+          "Status": {
+            "type": "integer",
+            "description": "HttpStatus code for the response",
+            "format": "int32"
+          },
+          "Message": {
+            "type": "string",
+            "description": "Deprecated, use StatusMessage instead. Error message describing an error that occurred during the processing of the request",
+            "nullable": true,
+            "deprecated": true
+          },
+          "StatusMessage": {
+            "type": "string",
+            "description": "Status message describing an error that occurred during the processing of the request",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "The response containing stock information for a product"
+      },
+      "TemplateItem": {
+        "title": "Template Item",
+        "type": "object",
+        "properties": {
+          "Id": {
+            "type": "integer",
+            "description": "Unique template Id",
+            "format": "int32"
+          },
+          "Name": {
+            "type": "string",
+            "description": "Template name",
+            "nullable": true
+          },
+          "Type": {
+            "type": "string",
+            "description": "Template type name",
+            "nullable": true
+          },
+          "Language": {
+            "type": "string",
+            "description": "Language IsoAlpha2 code",
+            "nullable": true
+          },
+          "Sender": {
+            "type": "string",
+            "description": "Sender name",
+            "nullable": true
+          },
+          "Subject": {
+            "type": "string",
+            "description": "Template subject",
+            "nullable": true
+          },
+          "FormattedText": {
+            "type": "string",
+            "description": "Template text that include html elements",
+            "nullable": true
+          },
+          "PlainText": {
+            "type": "string",
+            "description": "Template plain text",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "An object containing information about template"
+      },
+      "TemplateResponse": {
+        "title": "Template Response",
+        "type": "object",
+        "properties": {
+          "Templates": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TemplateItem"
+            },
+            "description": "The list of templates",
+            "nullable": true
+          },
+          "Status": {
+            "type": "integer",
+            "description": "HttpStatus code for the response",
+            "format": "int32"
+          },
+          "Message": {
+            "type": "string",
+            "description": "Deprecated, use StatusMessage instead. Error message describing an error that occurred during the processing of the request",
+            "nullable": true,
+            "deprecated": true
+          },
+          "StatusMessage": {
+            "type": "string",
+            "description": "Status message describing an error that occurred during the processing of the request",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "The response containing available templates"
+      }
+    },
+    "securitySchemes": {
+      "ApiToken": {
+        "type": "apiKey",
+        "description": "The API-Token provided to you by Huuray.",
+        "name": "X-API-TOKEN",
+        "in": "header"
+      }
+    }
+  }
+}

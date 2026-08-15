@@ -1,0 +1,5 @@
+# Normalise line endings so the repo is identical on Windows, macOS and Linux
+# runners — the spec-drift diff check depends on it.
+* text=auto eol=lf
+*.svg text eol=lf
+*.png binary

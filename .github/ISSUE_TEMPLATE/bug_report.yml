@@ -1,0 +1,79 @@
+name: Bug report
+description: Something in this library does not behave as documented
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting this.
+
+        **Never paste an API token, an API secret, or a voucher code into a GitHub issue.**
+        Voucher codes are bearer instruments — whoever holds the code holds the value.
+
+        Reporting a security vulnerability? Do not use this form. Email rg@huuray.com.
+
+        Question about the API itself, your account, or a live production problem?
+        Contact your Huuray representative — GitHub issues are not monitored for urgent matters.
+
+  - type: input
+    id: version
+    attributes:
+      label: huuray version
+      placeholder: "0.1.0"
+    validations:
+      required: true
+
+  - type: input
+    id: python
+    attributes:
+      label: Python version
+      placeholder: "3.12.4"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: client
+    attributes:
+      label: Which client?
+      options:
+        - HuurayClient (synchronous)
+        - AsyncHuurayClient
+        - The huuray CLI
+    validations:
+      required: true
+
+  - type: textarea
+    id: what
+    attributes:
+      label: What did you call?
+      description: The method and arguments, with real values replaced by placeholders.
+      render: python
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect to happen?
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: What happened instead?
+      description: |
+        Include the exception class and message if there was one. If you paste a response
+        body or a traceback, redact voucher codes and recipient contact details first.
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: confirms
+    attributes:
+      label: Before submitting
+      options:
+        - label: This report contains no API tokens, secrets, or voucher codes.
+          required: true
+        - label: This is about the client library, not about the API, my account, or a production incident.
+          required: true

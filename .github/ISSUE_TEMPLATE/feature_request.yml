@@ -1,0 +1,46 @@
+name: Feature request
+description: Suggest an improvement to this library
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before you write this up, one thing that saves us both time:
+
+        **This client exposes nothing the Huuray API does not document.** If your
+        request needs a field, an endpoint, or a behaviour that is not in the v4
+        specification, it cannot be built here — it is an API change first. Raise
+        that with your Huuray representative and we will follow along.
+
+        Requests that fit well: better ergonomics over existing operations, clearer
+        errors, better types, better documentation.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem are you trying to solve?
+      description: Describe the situation, not the solution you have in mind.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What would you like the library to do?
+      render: python
+    validations:
+      required: true
+
+  - type: textarea
+    id: workaround
+    attributes:
+      label: How are you handling it today?
+      description: Including "using request() directly" — that is useful to know.
+
+  - type: checkboxes
+    id: confirms
+    attributes:
+      label: Before submitting
+      options:
+        - label: This can be built using operations the v4 API already documents.
+          required: false

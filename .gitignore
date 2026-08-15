@@ -1,0 +1,22 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# Build artefacts
+build/
+dist/
+*.egg-info/
+
+# Virtual environments
+.venv/
+venv/
+
+# Never commit credentials.
+.env
+.env.*
+!.env.example
