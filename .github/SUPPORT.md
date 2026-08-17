@@ -2,7 +2,13 @@
 
 This library is maintained by Huuray A/S. Which channel you want depends on what you need.
 
-## Bugs, questions and feature requests about this library
+## Questions about this library
+
+Open a [discussion](https://github.com/Huuray-A-S/huuray-python/discussions). That is the right place for "how do I…", "is this supported", and anything you are unsure about.
+
+Note that this repository does not accept external pull requests — see CONTRIBUTING.md for why. Asking is always faster than patching here.
+
+## Bugs and feature requests about this library
 
 [Open a GitHub issue.](https://github.com/Huuray-A-S/huuray-python/issues) We read every one and aim to respond within five business days.
 
