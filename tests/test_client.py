@@ -107,7 +107,7 @@ class TestConstruction:
         # It used to: a password in the URL was repeated in the message.
         with pytest.raises(HuurayConfigError, match=r"not an absolute http\(s\) URL") as caught:
             client_class(api_token="t", api_secret="s", base_url=bad)
-        assert "https://api.huuray.com" in str(caught.value)
+        assert str(caught.value).count("https://api.huuray.com") == 1  # the expected example
         assert_not_quoted(caught.value, "leaky")
 
     @pytest.mark.parametrize("client_class", [HuurayClient, AsyncHuurayClient])
@@ -125,7 +125,7 @@ class TestConstruction:
     def test_rejects_a_base_url_with_user_info_without_quoting_it(self, client_class, bad):
         with pytest.raises(HuurayConfigError, match="user-info") as caught:
             client_class(api_token="t", api_secret="s", base_url=bad)
-        assert "https://api.huuray.com" in str(caught.value)
+        assert str(caught.value).count("https://api.huuray.com") == 1  # the expected example
         assert_not_quoted(caught.value, "leaky")
 
     @pytest.mark.parametrize("client_class", [HuurayClient, AsyncHuurayClient])
@@ -146,7 +146,7 @@ class TestConstruction:
     ):
         with pytest.raises(HuurayConfigError, match=r"query \(\?\) or fragment \(#\)") as caught:
             client_class(api_token="t", api_secret="s", base_url=bad)
-        assert "https://api.huuray.com" in str(caught.value)
+        assert str(caught.value).count("https://api.huuray.com") == 1  # the expected example
         assert_not_quoted(caught.value, "leaky")
 
     @pytest.mark.parametrize("client_class", [HuurayClient, AsyncHuurayClient])
@@ -178,7 +178,7 @@ class TestConstruction:
     ):
         with pytest.raises(HuurayConfigError, match="empty or invalid host") as caught:
             client_class(api_token="t", api_secret="s", base_url=bad)
-        assert "https://api.huuray.com" in str(caught.value)
+        assert str(caught.value).count("https://api.huuray.com") == 1  # the expected example
         assert_not_quoted(caught.value, bad)
         assert_not_quoted(caught.value, "leaky")
 
