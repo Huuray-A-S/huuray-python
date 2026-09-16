@@ -102,10 +102,11 @@ class TemplatesResource(Resource):
         The endpoint declares no request body in the API specification, so this
         client sends none — confirmed accepted by the live API.
 
-        Note: when the account has **no active templates**, the API answers
-        ``404`` ("There were no active templates") rather than an empty list, so
-        this method raises :class:`~huuray.HuurayNotFoundError` in that case —
-        catch it and treat it as "no templates exist".
+        Note: this can raise :class:`~huuray.HuurayNotFoundError` — the API
+        answered ``404`` ("There were no active templates") for an account with
+        no templates. An account with PDF templates but no email or SMS
+        templates got ``200`` with an empty ``templates`` list instead. Handle
+        both.
         """
         return _map(self._client._send(_operation()).data)
 

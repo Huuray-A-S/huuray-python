@@ -6,9 +6,10 @@ specification, so this client reads ``StatusMessage`` first and falls back to
 ``Message``.
 
 Input guards — a fractional amount, a quantity over the synchronous limit, a
-recipient count that is neither 1 nor ``quantity`` — raise the built-in
-``ValueError`` before any request is sent. They are programming mistakes, not
-API responses, and nothing in this hierarchy is raised for them.
+recipient count that is neither 1 nor ``quantity`` when ``template_id`` is set —
+raise the built-in ``ValueError`` before any request is sent. They are
+programming mistakes, not API responses, and nothing in this hierarchy is raised
+for them.
 """
 
 from __future__ import annotations
@@ -121,10 +122,12 @@ class HuurayAuthError(HuurayAPIError):
 class HuurayNotFoundError(HuurayAPIError):
     """404 — the order, voucher, or product was not found.
 
-    Also how the API signals an **empty result set**: ``POST /v4/Template`` on
-    an account with no templates answers 404 ("There were no active templates")
-    rather than an empty list, and ``POST /v4/Search`` with no match does the
-    same. From ``orders.search()`` this means "the order did not land".
+    Also how the API can signal "nothing found": ``POST /v4/Search`` with no
+    match answers 404, and ``POST /v4/Template`` answered 404 ("There were no
+    active templates") for an account with no templates — while an account with
+    PDF templates but no email or SMS templates got 200 with an empty
+    ``Templates`` list. From ``orders.search()`` this means "the order did not
+    land".
     """
 
 

@@ -33,7 +33,8 @@ async def main() -> int:
         try:
             templates = (await huuray.templates.list()).templates
         except HuurayNotFoundError:
-            # An account with no templates answers 404, not an empty list.
+            # Observed for an account with no templates. One with only PDF
+            # templates got an empty list instead.
             templates = []
         print(f"{len(templates)} delivery templates")
 

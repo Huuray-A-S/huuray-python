@@ -2,8 +2,9 @@
 
 Run by ``.github/workflows/spec-drift.yml`` on a schedule. If the download
 differs from the committed copy, the workflow runs the suite against it and
-opens a pull request — that PR is the early warning that the API changed under
-us.
+flags the change — a pull request when the ``SPEC_DRIFT_TOKEN`` secret is
+configured, otherwise a failed run. That is the early warning that the API
+changed under us.
 
 Exits 0 whether or not anything changed; the workflow diffs the working tree.
 """

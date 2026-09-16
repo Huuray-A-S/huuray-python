@@ -7,9 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Confirmed against the live API (2026-08-15)
+### Confirmed against the live API
 
-Every assumption the specification left open has been verified with real calls:
+Every assumption the specification left open has been verified with real calls
+on 2026-08-15, unless another date is given:
 
 - **`X-API-HASH` encoding is lowercase hex** — authenticated against
   `GET /v4/Balance`; the other three candidate encodings return 401. The default
@@ -18,10 +19,14 @@ Every assumption the specification left open has been verified with real calls:
 - **`POST /v4/Template` accepts a bodyless request**, as the spec implies.
 - **The full order loop works end to end**: Balance → sync Order (quantity 1, no
   delivery) → Search by `RefID` (matched) → Cancel (full) → Balance.
-- **An empty result set is signalled as HTTP 404**, not as an empty 200 —
-  observed live on `/v4/Template` ("There were no active templates"). This is why
-  the reconciliation examples treat `HuurayNotFoundError` from `/v4/Search` as
+- **`POST /v4/Template` answered HTTP 404** ("There were no active templates") for
+  an account with no templates — observed live 2026-08-15. This is why the
+  reconciliation examples treat `HuurayNotFoundError` from `/v4/Search` as
   "the order did not land".
+- **An account with PDF templates but no email or SMS templates gets `200`** with
+  an empty `Templates` list, and its PDF templates in `PDFTemplates` — observed live
+  2026-09-16. `templates.list()` can therefore return an empty `templates` list as
+  well as raise `HuurayNotFoundError`; handle both.
 
 ### Security
 
@@ -46,6 +51,18 @@ Every assumption the specification left open has been verified with real calls:
   `HuurayIndeterminateOrderError`; `None` meant no timeout on both clients, and NaN
   or infinity on the async one; a larger value raised `OverflowError` on Windows
   and can wrap on Linux and macOS.
+
+### Fixed
+
+- The README Feedback section no longer invites pull requests, which this
+  repository does not accept.
+- The recipient-count guard is documented as applying when `template_id` is set,
+  which is the only time it is checked.
+- The templates docs no longer promise a 404 for an account without email or SMS
+  templates; see the 2026-09-16 observation above.
+- CONTRIBUTING, `scripts/fetch_spec.py` and the spec-drift workflow no longer say a
+  spec change always opens a pull request: without a `SPEC_DRIFT_TOKEN` secret,
+  Actions may not create one and the run fails instead.
 
 ## [0.1.0] — unreleased
 

@@ -41,7 +41,8 @@ def main() -> int:
         print(f"Stock: {stock if stock is not None else 'unknown'}")
 
         # 4. How would it be delivered? Templates are the emails and texts
-        #    recipients get. An account with none gets a 404, not an empty list.
+        #    recipients get. An account with none got a 404; one with only PDF
+        #    templates got an empty list. Handle both.
         try:
             templates = huuray.templates.list().templates
         except HuurayNotFoundError:

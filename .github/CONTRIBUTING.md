@@ -60,7 +60,7 @@ When you add or change a method, change both classes. A parity test asserts the 
 
 ## The vendored specification
 
-`openapi/huuray-v4.json` is committed on purpose. A scheduled workflow re-downloads it weekly and opens a pull request if it changed, which is how we find out about API changes. Review every one of those PRs — do not merge on green alone.
+`openapi/huuray-v4.json` is committed on purpose. A scheduled workflow re-downloads it weekly and flags any change: it opens a pull request when a `SPEC_DRIFT_TOKEN` secret is configured, and otherwise the run fails. That is how we find out about API changes. Review every one of those changes — do not merge on green alone.
 
 ## Tests
 
