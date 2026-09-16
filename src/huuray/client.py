@@ -70,6 +70,12 @@ _PATH = re.compile(r"/[\x21-\x7e]*")
 #: A base URL holds visible ASCII only — no space, control or non-ASCII character.
 _VISIBLE_ASCII = re.compile(r"[\x21-\x7e]+")
 
+#: An unpaired UTF-16 surrogate, which UTF-8 cannot encode.
+_SURROGATE = re.compile("[\ud800-\udfff]")
+
+#: Why a base URL is refused when its host or port cannot be used.
+_BAD_HOST_OR_PORT = "has an empty or invalid host, or a port that is not a number from 1 to 65535"
+
 T = TypeVar("T")
 
 _UNREADABLE = object()
@@ -81,6 +87,47 @@ class RawResponse(Generic[T]):
 
     data: T
     http_status: int
+
+
+def _base_url_problem(base_url: str) -> Optional[str]:
+    """What makes ``base_url`` unusable, or ``None`` if nothing does.
+
+    The answer never quotes the value, which may hold a password, and parser
+    errors are dropped rather than chained: their messages can quote it too.
+    """
+    # Checked before parsing: urlsplit() accepts a space, a control character or a
+    # non-ASCII character, which httpx then rejects or silently percent-encodes at
+    # request time.
+    if not _VISIBLE_ASCII.fullmatch(base_url):
+        return "contains a space, control character or non-ASCII character"
+    # The path is appended to the base URL as a string, so after a "?" or "#" it
+    # lands in the query or fragment and every request goes to the wrong path.
+    if "?" in base_url or "#" in base_url:
+        return (
+            "contains a query (?) or fragment (#), which would send every request to the wrong path"
+        )
+    try:
+        parsed = urlsplit(base_url)
+    except ValueError:  # e.g. an unclosed IPv6 bracket
+        return _BAD_HOST_OR_PORT
+    # Requiring http(s) keeps credentials from being aimed at a file:// or ftp://
+    # target by a configuration typo, and fails "/v4" or "api.huuray.com" (no
+    # scheme) here rather than as a confusing transport error later.
+    if parsed.scheme not in ("http", "https") or not parsed.netloc:
+        return "is not an absolute http(s) URL"
+    # httpx sends user-info to the host as Basic credentials on every request.
+    if "@" in parsed.netloc:
+        return "contains user-info (user@ or user:password@), which would be sent to the host"
+    # Parsed as httpx will parse each request URL: otherwise a bad port, an empty
+    # host or invalid IDNA is accepted here and left to the first request.
+    try:
+        url = httpx.URL(base_url.rstrip("/") + "/")
+        host, port = url.host, url.port
+    except (ValueError, UnicodeError, httpx.InvalidURL):
+        host, port = "", None
+    if not host or (port is not None and not 1 <= port <= 65535):
+        return _BAD_HOST_OR_PORT
+    return None
 
 
 class _BaseClient:
@@ -115,10 +162,19 @@ class _BaseClient:
                 "api_secret is required. Pass it explicitly, e.g. from "
                 "os.environ['HUURAY_API_SECRET']."
             )
+        # os.environ decodes an undecodable byte on POSIX to an unpaired surrogate.
+        # Left alone, signing raises a UnicodeEncodeError on every request whose repr
+        # and args carry the secret and the nonce.
+        if _SURROGATE.search(api_secret):
+            raise HuurayConfigError(
+                "api_secret cannot be UTF-8 encoded to sign requests: it holds an unpaired "
+                "surrogate, e.g. an undecodable byte read from the environment."
+            )
         # Rejected, never stripped: left to httpx, a line break or a stray space fails
         # at send time as a connection error quoting the token — for an order, as an
         # indeterminate one — and other control characters reach the wire. The secret
-        # is not checked because it is never sent. Neither message quotes the value.
+        # is never sent, so it is checked above only for what would stop it signing.
+        # None of these messages quotes the value.
         if not _is_sendable_header_value(api_token):
             raise HuurayConfigError(
                 "api_token cannot be sent as the X-API-TOKEN header: it holds a line break, tab, "
@@ -131,30 +187,17 @@ class _BaseClient:
                 "NUL or other control character, a non-ASCII character, or a space at either end."
             )
 
-        # Checked before parsing, and not quoted: urlsplit() accepts a space, a
-        # control character or a non-ASCII character, which httpx then rejects or
-        # silently percent-encodes at request time.
-        if not _VISIBLE_ASCII.fullmatch(base_url or DEFAULT_BASE_URL):
+        # Fail at construction, not at the first request. The message names the problem
+        # and never quotes the value, which may hold a password.
+        problem = _base_url_problem(base_url or DEFAULT_BASE_URL)
+        if problem is not None:
             raise HuurayConfigError(
-                "base_url contains a space, control character or non-ASCII character. "
-                f"Expected something like {DEFAULT_BASE_URL!r}."
+                f"base_url {problem}. Expected something like {DEFAULT_BASE_URL!r}."
             )
 
         self._api_token = api_token
         self._api_secret = api_secret
         self._base_url = (base_url or DEFAULT_BASE_URL).rstrip("/")
-
-        # Fail at construction, not at the first request. A base_url of "/v4" or
-        # "api.huuray.com" (no scheme) would otherwise be accepted here and only
-        # surface later as a confusing transport error — and requiring http(s)
-        # keeps credentials from being aimed at a file:// or ftp:// target by a
-        # configuration typo.
-        parsed = urlsplit(self._base_url)
-        if parsed.scheme not in ("http", "https") or not parsed.netloc:
-            raise HuurayConfigError(
-                f"base_url {base_url!r} is not an absolute http(s) URL. "
-                f"Expected something like {DEFAULT_BASE_URL!r}."
-            )
         self._hash_encoding: HashEncoding = hash_encoding
 
         # Refused here rather than discovered on an order. 0 makes the socket
@@ -319,7 +362,8 @@ class HuurayClient(_BaseClient):
     :param api_secret: Your API secret. Used to sign each request; never sent
         and never logged.
     :param base_url: Override the API host. Defaults to ``https://api.huuray.com``.
-        Must be an absolute http(s) URL of visible ASCII.
+        Must be an absolute http(s) URL of visible ASCII, with a host and no
+        user-info, query or fragment.
     :param hash_encoding: Encoding of the ``X-API-HASH`` digest. Defaults to
         lowercase hex. If you see a 401 with credentials you know are good, try
         another value.

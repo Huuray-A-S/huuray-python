@@ -22,6 +22,7 @@ from huuray import (
     HuurayValidationError,
     RetryOptions,
 )
+from huuray.auth import sign_request
 from huuray.resources._base import Operation
 
 from .helpers import (
@@ -32,6 +33,15 @@ from .helpers import (
 )
 
 
+def assert_not_quoted(error: BaseException, marker: str) -> None:
+    """``marker`` is nowhere in the error, and nothing is chained that could hold it."""
+    assert marker not in str(error)
+    assert marker not in repr(error)
+    assert marker not in repr(error.args)
+    assert error.__cause__ is None
+    assert error.__context__ is None
+
+
 class TestConstruction:
     def test_requires_an_api_token(self):
         with pytest.raises(HuurayConfigError):
@@ -40,6 +50,37 @@ class TestConstruction:
     def test_requires_an_api_secret(self):
         with pytest.raises(HuurayConfigError):
             HuurayClient(api_token="t", api_secret="")
+
+    @pytest.mark.parametrize("client_class", [HuurayClient, AsyncHuurayClient])
+    @pytest.mark.parametrize(
+        "bad",
+        [
+            # os.environ decodes an undecodable byte on POSIX to a lone surrogate.
+            # Signing then raised a raw UnicodeEncodeError whose repr and args
+            # carried the secret and the nonce.
+            "leaky-secret\udcff",
+            "\ud800leaky-secret",
+            "leaky\udfffsecret",
+        ],
+    )
+    def test_rejects_an_api_secret_that_cannot_be_utf8_encoded_without_quoting_it(
+        self, client_class, bad
+    ):
+        with pytest.raises(HuurayConfigError, match="unpaired surrogate") as caught:
+            client_class(api_token="t", api_secret=bad)
+        assert_not_quoted(caught.value, "leaky")
+
+    def test_accepts_a_non_ascii_api_secret_and_signs_it_as_utf8(self):
+        secret = "sëcret-\U0001f511"
+        transport = RecordingTransport()
+        client = HuurayClient(
+            api_token="t",
+            api_secret=secret,
+            nonce_factory=lambda: "n",
+            transport=httpx.MockTransport(transport.handle_request),
+        )
+        client.balances.list()
+        assert transport.calls[0].headers["x-api-hash"] == sign_request(secret, "n")
 
     @pytest.mark.parametrize(
         "bad",
@@ -58,9 +99,101 @@ class TestConstruction:
         with pytest.raises(HuurayConfigError):
             HuurayClient(api_token="t", api_secret="s", base_url=bad)
 
-    @pytest.mark.parametrize("good", ["https://api.huuray.com", "http://localhost:8080"])
-    def test_accepts_an_absolute_http_base_url(self, good):
-        assert HuurayClient(api_token="t", api_secret="s", base_url=good) is not None
+    @pytest.mark.parametrize("client_class", [HuurayClient, AsyncHuurayClient])
+    @pytest.mark.parametrize(
+        "bad", ["ftp://leakyuser:leakypw@example.test", "leaky.example.test/v4", "file:///leaky"]
+    )
+    def test_the_not_absolute_http_error_does_not_quote_the_base_url(self, client_class, bad):
+        # It used to: a password in the URL was repeated in the message.
+        with pytest.raises(HuurayConfigError, match=r"not an absolute http\(s\) URL") as caught:
+            client_class(api_token="t", api_secret="s", base_url=bad)
+        assert "https://api.huuray.com" in str(caught.value)
+        assert_not_quoted(caught.value, "leaky")
+
+    @pytest.mark.parametrize("client_class", [HuurayClient, AsyncHuurayClient])
+    @pytest.mark.parametrize(
+        "bad",
+        [
+            # httpx sent user-info to the host as Basic credentials on every request.
+            "https://leakyuser:leakypw@example.test",
+            "https://leakyuser@example.test/",
+            "https://:leakypw@example.test",
+            "http://leakyuser:leakypw@127.0.0.1:8080/v4-proxy/",
+            "https://@example.test",
+        ],
+    )
+    def test_rejects_a_base_url_with_user_info_without_quoting_it(self, client_class, bad):
+        with pytest.raises(HuurayConfigError, match="user-info") as caught:
+            client_class(api_token="t", api_secret="s", base_url=bad)
+        assert "https://api.huuray.com" in str(caught.value)
+        assert_not_quoted(caught.value, "leaky")
+
+    @pytest.mark.parametrize("client_class", [HuurayClient, AsyncHuurayClient])
+    @pytest.mark.parametrize(
+        "bad",
+        [
+            # The path was appended after it, so every request went to the wrong path.
+            "https://example.test/?leaky=1",
+            "https://example.test?leaky",
+            "https://example.test/v4?",
+            "https://example.test/#leaky",
+            "https://example.test#",
+            "https://leakyuser:leakypw@example.test/?x",
+        ],
+    )
+    def test_rejects_a_base_url_with_a_query_or_fragment_without_quoting_it(
+        self, client_class, bad
+    ):
+        with pytest.raises(HuurayConfigError, match=r"query \(\?\) or fragment \(#\)") as caught:
+            client_class(api_token="t", api_secret="s", base_url=bad)
+        assert "https://api.huuray.com" in str(caught.value)
+        assert_not_quoted(caught.value, "leaky")
+
+    @pytest.mark.parametrize("client_class", [HuurayClient, AsyncHuurayClient])
+    @pytest.mark.parametrize(
+        "bad",
+        [
+            # Accepted here, then a raw httpx.InvalidURL at the first request.
+            "http://127.0.0.1:abc",
+            "http://127.0.0.1:5%",
+            # httpx does not check the range, or that there is a host.
+            "http://127.0.0.1:99999",
+            "http://127.0.0.1:0",
+            "http://leaky.example.test:65536",
+            "http://:80",
+            # A raw idna.IDNAError at the first request.
+            "http://xn--",
+            # A raw ValueError from urlsplit() here, some quoting the host.
+            "http://[::1",
+            "http://[leaky]",
+        ],
+    )
+    def test_rejects_a_base_url_whose_host_or_port_cannot_be_used_without_quoting_it(
+        self, client_class, bad
+    ):
+        with pytest.raises(HuurayConfigError, match="empty or invalid host") as caught:
+            client_class(api_token="t", api_secret="s", base_url=bad)
+        assert "https://api.huuray.com" in str(caught.value)
+        assert_not_quoted(caught.value, bad)
+        assert_not_quoted(caught.value, "leaky")
+
+    @pytest.mark.parametrize("client_class", [HuurayClient, AsyncHuurayClient])
+    @pytest.mark.parametrize(
+        "good",
+        [
+            "https://api.huuray.com",
+            "http://localhost:8080",
+            "http://127.0.0.1:1",
+            "http://127.0.0.1:65535",
+            "http://[::1]:8080",
+            "https://xn--bcher-kva.example",
+        ],
+    )
+    def test_accepts_an_absolute_http_base_url(self, client_class, good):
+        # A fake transport only keeps each case from building a TLS context.
+        transport = httpx.MockTransport(lambda _: httpx.Response(200))
+        client = client_class(api_token="t", api_secret="s", base_url=good, transport=transport)
+        assert client._base_url == good
 
     @pytest.mark.parametrize(
         "bad",
@@ -188,6 +321,22 @@ class TestConstruction:
         client.balances.list()
         assert calls[0].origin == "https://example.test"
         assert calls[0].path == "/v4/Balance"
+
+    @pytest.mark.parametrize(
+        ("base_url", "expected"),
+        [
+            ("https://example.test/", "https://example.test/v4/Balance"),
+            ("http://[::1]:8080/", "http://[::1]:8080/v4/Balance"),
+            ("https://example.test/v4-proxy/", "https://example.test/v4-proxy/v4/Balance"),
+        ],
+    )
+    async def test_the_async_client_accepts_a_base_url_with_a_trailing_slash(
+        self, base_url, expected
+    ):
+        client, calls = make_async_client(base_url=base_url)
+        async with client:
+            await client.balances.list()
+        assert calls[0].url == expected
 
     def test_works_as_a_context_manager(self):
         client, calls = make_client()

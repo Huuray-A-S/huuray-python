@@ -43,9 +43,25 @@ on 2026-08-15, unless another date is given:
   (for an order, `HuurayIndeterminateOrderError`), raised a `UnicodeEncodeError`
   carrying it, or reached the wire; an empty nonce went out as an empty
   `X-API-NONCE`. The new errors never quote the value.
-- `base_url` holding a space, control character or non-ASCII character raises
-  `HuurayConfigError` at construction, instead of failing or being percent-encoded
-  at request time.
+- `base_url` raises `HuurayConfigError` at construction when it holds:
+  - a space, control character or non-ASCII character, which failed or was
+    percent-encoded at request time;
+  - user-info (`user@` or `user:password@`), which httpx sent to the host as Basic
+    credentials on every request;
+  - a query (`?`) or fragment (`#`): the request path was appended after it, so
+    every request went to the wrong path;
+  - an empty host, a port that is not a number from 1 to 65535, or a host that is
+    not valid IDNA, which were accepted at construction (a non-numeric port or
+    invalid IDNA then raised a raw `httpx.InvalidURL` or `idna.IDNAError` at the
+    first request); or an unclosed IPv6 bracket, which raised a raw `ValueError` at
+    construction.
+
+  No `base_url` error quotes the value (it may hold a password) or chains a parser
+  error; the error for a URL that is not absolute http(s) used to quote it.
+- An `api_secret` holding an unpaired surrogate, which is what `os.environ` gives
+  for an undecodable byte on POSIX, raises `HuurayConfigError` at construction.
+  Before, every request raised a raw `UnicodeEncodeError` whose repr and args
+  carried the secret and the nonce.
 - `timeout` must be greater than 0 and at most 2147483.647 seconds, checked at
   construction. 0 or a negative value made an order that was never sent raise
   `HuurayIndeterminateOrderError`; `None` meant no timeout on both clients, and NaN
