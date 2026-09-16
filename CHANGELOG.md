@@ -50,11 +50,13 @@ on 2026-08-15, unless another date is given:
     credentials on every request;
   - a query (`?`) or fragment (`#`): the request path was appended after it, so
     every request went to the wrong path;
-  - an empty host, a port that is not a number from 1 to 65535, or a host that is
-    not valid IDNA, which were accepted at construction (a non-numeric port or
-    invalid IDNA then raised a raw `httpx.InvalidURL` or `idna.IDNAError` at the
-    first request); or an unclosed IPv6 bracket, which raised a raw `ValueError` at
-    construction.
+  - an empty host, a port that is not a number from 1 to 65535, a host that is not
+    valid IDNA, or a host with an empty label (`a..b`) or a label over 63
+    characters, which were accepted at construction (a non-numeric port or invalid
+    IDNA then raised a raw `httpx.InvalidURL` or `idna.IDNAError` at the first
+    request, and an empty or over-long label a raw `UnicodeError` at the first
+    request on the sync client); or an unclosed IPv6 bracket, which raised a raw
+    `ValueError` at construction.
 
   No `base_url` error quotes the value (it may hold a password) or chains a parser
   error; the error for a URL that is not absolute http(s) used to quote it.

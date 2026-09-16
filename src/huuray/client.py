@@ -123,6 +123,9 @@ def _base_url_problem(base_url: str) -> Optional[str]:
     try:
         url = httpx.URL(base_url.rstrip("/") + "/")
         host, port = url.host, url.port
+        # The sync transport resolves the host through the "idna" codec, which raises
+        # a raw UnicodeError for an empty label ("a..b") or one over 63 characters.
+        url.raw_host.decode("ascii").encode("idna")
     except (ValueError, UnicodeError, httpx.InvalidURL):
         host, port = "", None
     if not host or (port is not None and not 1 <= port <= 65535):

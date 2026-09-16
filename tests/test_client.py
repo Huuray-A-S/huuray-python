@@ -163,6 +163,11 @@ class TestConstruction:
             "http://:80",
             # A raw idna.IDNAError at the first request.
             "http://xn--",
+            # A raw UnicodeError from the sync transport at the first request.
+            "http://a..b",
+            "https://.",
+            "https://" + "a" * 64 + ".example.test",
+            "https://127.0.0.1:99999",
             # A raw ValueError from urlsplit() here, some quoting the host.
             "http://[::1",
             "http://[leaky]",
