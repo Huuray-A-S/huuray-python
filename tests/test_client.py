@@ -9,6 +9,7 @@ import httpx
 import pytest
 
 from huuray import (
+    AsyncHuurayClient,
     HuurayAPIError,
     HuurayAuthError,
     HuurayClient,
@@ -21,6 +22,7 @@ from huuray import (
     HuurayValidationError,
     RetryOptions,
 )
+from huuray.resources._base import Operation
 
 from .helpers import (
     MockResponse,
@@ -59,6 +61,119 @@ class TestConstruction:
     @pytest.mark.parametrize("good", ["https://api.huuray.com", "http://localhost:8080"])
     def test_accepts_an_absolute_http_base_url(self, good):
         assert HuurayClient(api_token="t", api_secret="s", base_url=good) is not None
+
+    @pytest.mark.parametrize(
+        "bad",
+        [
+            "https://api.huuray.com/ leaky",
+            "https://api leaky.huuray.com",
+            "https://api.huuray.com\r\nleaky",
+            "https://api.huuray.com\tleaky",
+            "https://api.huuray.com/leaky\x00",
+            "https://äpi.leaky.example",
+            "https://api.huuray.com/ä/leaky",
+        ],
+    )
+    def test_rejects_a_base_url_with_a_space_control_or_non_ascii_character(self, bad):
+        # urlsplit() accepts every one of these. httpx then refused them, or
+        # percent-encoded them onto every request path, only at request time.
+        with pytest.raises(
+            HuurayConfigError, match="space, control character or non-ASCII"
+        ) as caught:
+            HuurayClient(api_token="t", api_secret="s", base_url=bad)
+        assert "leaky" not in str(caught.value)
+
+    @pytest.mark.parametrize("client_class", [HuurayClient, AsyncHuurayClient])
+    @pytest.mark.parametrize(
+        "bad",
+        [
+            "leaky-token\r\nX-Injected: yes",
+            "leaky-token\n",
+            "leaky-token\x00",
+            "leaky\ttoken",
+            "leaky-token\x7f",
+            "leaky-token\x01",
+            "leaky-tökén",
+            "leaky-token ",
+            " leaky-token",
+        ],
+    )
+    def test_rejects_an_api_token_that_cannot_be_sent_as_a_header_without_quoting_it(
+        self, client_class, bad
+    ):
+        # Left to httpx, a line break or a stray space failed only at send time, as
+        # a connection error quoting the token — for an order, as an indeterminate
+        # one. A tab, DEL or other control character reached the wire; a non-ASCII
+        # character raised a raw UnicodeEncodeError whose repr carries the token.
+        with pytest.raises(HuurayConfigError, match="X-API-TOKEN") as caught:
+            client_class(api_token=bad, api_secret="s")
+        assert "leaky" not in str(caught.value)
+        assert "leaky" not in repr(caught.value)
+
+    @pytest.mark.parametrize("blank", ["   ", "\t", "\r\n"])
+    def test_a_whitespace_only_api_token_counts_as_missing(self, blank):
+        with pytest.raises(HuurayConfigError, match="api_token is required"):
+            HuurayClient(api_token=blank, api_secret="s")
+
+    @pytest.mark.parametrize("client_class", [HuurayClient, AsyncHuurayClient])
+    @pytest.mark.parametrize(
+        "bad",
+        [
+            "payroll/2.1\r\nX-Injected: yes",
+            "payroll/2.1\x00",
+            "payroll\t2.1",
+            "payroll/2.1\x7f",
+            "payroll/2.1\x1b[31m",
+            "payroll/2.1 ",
+            "pæyroll/2.1",
+            "   ",
+        ],
+    )
+    def test_rejects_a_user_agent_that_cannot_be_sent_as_a_header_without_quoting_it(
+        self, client_class, bad
+    ):
+        with pytest.raises(HuurayConfigError, match="User-Agent") as caught:
+            client_class(api_token="t", api_secret="s", user_agent=bad)
+        assert "yroll" not in str(caught.value)
+
+    @pytest.mark.parametrize("client_class", [HuurayClient, AsyncHuurayClient])
+    @pytest.mark.parametrize(
+        "bad",
+        [
+            # 0 made the socket non-blocking and a negative value timed out at once:
+            # an order that never left raised HuurayIndeterminateOrderError.
+            0,
+            0.0,
+            -1,
+            -0.001,
+            float("-inf"),
+            # No timeout at all on the async client (and None on both), so a hung
+            # order never raised; a raw ValueError or OverflowError on the sync one.
+            float("nan"),
+            float("inf"),
+            None,
+            1e300,
+            # One millisecond past INT_MAX ms: OverflowError on Windows, and a C int
+            # cast for poll() that can wrap on Linux and macOS.
+            2147483.648,
+            True,
+            "30",
+        ],
+    )
+    def test_rejects_a_timeout_the_runtime_would_not_honour(self, client_class, bad):
+        with pytest.raises(HuurayConfigError, match=r"greater than 0 and at most 2147483\.647"):
+            client_class(api_token="t", api_secret="s", timeout=bad)
+
+    @pytest.mark.parametrize("good", [0.001, 1, 30.0, 2147483.647])
+    def test_accepts_a_timeout_in_range_and_attaches_it_to_every_request(self, good):
+        client, _ = make_client(timeout=good)
+        request = client._build_request(Operation(method="GET", path="/v4/Balance"))
+        assert request.extensions["timeout"] == {
+            "connect": good,
+            "read": good,
+            "write": good,
+            "pool": good,
+        }
 
     def test_defaults_to_the_production_host(self):
         client, calls = make_client()
@@ -124,6 +239,40 @@ class TestSigningPerRequest:
         client, calls = make_client(nonce_factory=lambda: "x" * 51)
         with pytest.raises(ValueError, match="at most 50"):
             client.balances.list()
+        assert calls == []
+
+    @pytest.mark.parametrize(
+        "bad",
+        [
+            # Sent as an empty X-API-NONCE, which the specification marks required.
+            "",
+            " ",
+            "leaky-nonce\r\nX-Injected: yes",
+            "leaky-nonce\x00",
+            "leaky\tnonce",
+            "leaky-nonce\x7f",
+            "leaky-nonce\x01",
+            "leaky-nöncé",
+            "leaky-nonce ",
+        ],
+    )
+    def test_a_custom_nonce_that_cannot_be_sent_is_rejected_before_sending_without_quoting_it(
+        self, bad
+    ):
+        client, calls = make_client(nonce_factory=lambda: bad)
+        with pytest.raises(ValueError, match="X-API-NONCE") as caught:
+            client.balances.list()
+        assert calls == []
+        assert "leaky" not in str(caught.value)
+        assert "leaky" not in repr(caught.value)
+        assert caught.value.__cause__ is None
+
+    def test_an_unsendable_nonce_on_an_order_is_a_value_error_not_an_indeterminate_order(self):
+        client, calls = make_client(nonce_factory=lambda: "nonce\r\nX-Injected: yes")
+        with pytest.raises(ValueError, match="X-API-NONCE"):
+            client.orders.create(
+                product_token="t", value=100, currency="DKK", quantity=1, ref_id="r"
+            )
         assert calls == []
 
 
@@ -341,6 +490,58 @@ class TestRequestEscapeHatch:
             client.request("POST", "/v4/Search", {})
         assert len(calls) == 1
 
+    @pytest.mark.parametrize(
+        "method",
+        ["GET\r\nX-Injected: yes", "GE T", "GET\x00", "G\tET", "", "GÉT", "GET/", "(GET)"],
+    )
+    def test_rejects_a_method_that_is_not_an_http_token_before_sending(self, method):
+        # Left to httpx, these failed at send time as HuurayConnectionError quoting
+        # the method, or escaped as a raw TypeError for a non-ASCII one.
+        client, calls = make_client()
+        with pytest.raises(ValueError, match="HTTP method must be a token") as caught:
+            client.request(method, "/v4/Balance")
+        assert calls == []
+        if method:
+            assert method not in str(caught.value)
+
+    def test_accepts_a_lowercase_method_token_and_sends_it_uppercased(self):
+        client, calls = make_client()
+        client.request("get", "/v4/Balance")
+        assert calls[0].method == "GET"
+
+    @pytest.mark.parametrize(
+        "path",
+        [
+            # Appended to the base URL as a string: "@evil.example" became the host,
+            # with the base host sent as Basic credentials; ":8443" became the port;
+            # ".evil.example" and "v4/..." extended the host name.
+            "@evil.example/v4/Order",
+            ".evil.example/v4/Balance",
+            "http://evil.example/v4/Balance",
+            ":8443/v4/Balance",
+            "v4/Balance",
+            "/v4/Balance\r\nX-Injected: yes",
+            "/v4/Ba lance",
+            "/v4/Balance\x00",
+            "/v4/\u2028",
+            "",
+        ],
+    )
+    def test_rejects_a_path_that_could_move_the_host_or_is_not_visible_ascii(self, path):
+        client, calls = make_client()
+        with pytest.raises(ValueError, match='the path must start with "/"') as caught:
+            client.request("GET", path)
+        assert calls == []
+        assert "evil" not in str(caught.value)
+        assert "Injected" not in str(caught.value)
+
+    def test_a_path_starting_with_two_slashes_stays_on_the_configured_host(self):
+        # Appended as a string, "//" cannot reach the authority, so it is accepted.
+        client, calls = make_client()
+        client.request("GET", "//evil.example/v4/Balance")
+        assert calls[0].origin == "https://api.huuray.com"
+        assert calls[0].path == "//evil.example/v4/Balance"
+
 
 class TestAsyncClient:
     async def test_reads_work_and_send_the_same_headers(self):
@@ -383,3 +584,25 @@ class TestAsyncClient:
             out = await client.request("POST", "/v4/Search", {"RefID": "r"})
         assert out["OrderUID"] == "abc"
         assert calls[0].path == "/v4/Search"
+
+    async def test_the_escape_hatch_rejects_an_unsafe_method_or_path_before_sending(self):
+        client, calls = make_async_client()
+        async with client:
+            with pytest.raises(ValueError, match="HTTP method must be a token"):
+                await client.request("GET\r\nX-Injected: yes", "/v4/Balance")
+            with pytest.raises(ValueError, match='the path must start with "/"'):
+                await client.request("GET", "@evil.example/v4/Order")
+            with pytest.raises(ValueError, match='the path must start with "/"'):
+                await client.request("GET", ":8443/v4/Balance")
+        assert calls == []
+
+    async def test_an_unsendable_nonce_on_an_order_is_a_value_error_not_an_indeterminate_order(
+        self,
+    ):
+        client, calls = make_async_client(nonce_factory=lambda: "")
+        async with client:
+            with pytest.raises(ValueError, match="X-API-NONCE"):
+                await client.orders.create(
+                    product_token="t", value=100, currency="DKK", quantity=1, ref_id="r"
+                )
+        assert calls == []

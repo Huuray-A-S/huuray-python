@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import re
 import secrets
 from typing import Literal
 
@@ -39,6 +40,22 @@ NONCE_MAX_LENGTH = 50
 
 #: Bytes of entropy per generated nonce. 24 bytes -> 32 base64url characters.
 _NONCE_BYTES = 24
+
+#: A header value this client can put on the wire: printable ASCII, not empty,
+#: with no space at either end.
+#:
+#: A line break would inject a header, and the other control characters (NUL,
+#: tab, DEL) are not valid in a field value either. httpx encodes header values
+#: as ASCII, so a non-ASCII character can never be sent, and RFC 9110 excludes
+#: leading and trailing whitespace from a field value. Left to httpx, such a value
+#: fails at send time as a connection error quoting it — for an order, as an
+#: indeterminate one — or as a UnicodeEncodeError carrying it, or reaches the
+#: wire as a raw control byte.
+_SENDABLE_HEADER_VALUE = re.compile(r"[\x21-\x7e](?:[\x20-\x7e]*[\x21-\x7e])?")
+
+
+def _is_sendable_header_value(value: str) -> bool:
+    return isinstance(value, str) and _SENDABLE_HEADER_VALUE.fullmatch(value) is not None
 
 
 def generate_nonce() -> str:
@@ -96,6 +113,14 @@ def build_auth_headers(
         raise ValueError(
             f"Nonce is {len(nonce)} characters; the Huuray API accepts at most "
             f"{NONCE_MAX_LENGTH}. If you supplied a custom nonce_factory, shorten its output."
+        )
+    # An empty nonce would be sent as an empty X-API-NONCE, which the specification
+    # marks required. The value is never quoted.
+    if not _is_sendable_header_value(nonce):
+        raise ValueError(
+            "Nonce is empty or cannot be sent as the X-API-NONCE header: it holds a line break, "
+            "tab, NUL or other control character, a non-ASCII character, or a space at either "
+            "end. If you supplied a custom nonce_factory, make it return printable ASCII only."
         )
     return {
         "X-API-TOKEN": api_token,

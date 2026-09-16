@@ -42,6 +42,17 @@ class TestNonceGeneration:
         with pytest.raises(ValueError):
             build_auth_headers(api_token="t", api_secret="s", nonce="a" * 64)
 
+    @pytest.mark.parametrize(
+        "bad", ["", " ", "a\r\nb", "a\nb", "a\x00", "a\tb", "a\x7f", "a\x1b", "nöncé", " a", "a "]
+    )
+    def test_rejects_a_nonce_that_cannot_be_sent_as_a_header(self, bad):
+        with pytest.raises(ValueError, match="X-API-NONCE"):
+            build_auth_headers(api_token="t", api_secret="s", nonce=bad)
+
+    def test_accepts_printable_ascii_including_an_inner_space(self):
+        headers = build_auth_headers(api_token="t", api_secret="s", nonce="a b~!")
+        assert headers["X-API-NONCE"] == "a b~!"
+
 
 class TestRequestSigning:
     @staticmethod

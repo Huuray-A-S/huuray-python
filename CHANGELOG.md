@@ -23,6 +23,30 @@ Every assumption the specification left open has been verified with real calls:
   the reconciliation examples treat `HuurayNotFoundError` from `/v4/Search` as
   "the order did not land".
 
+### Security
+
+- `request()` rejects a method that is not an HTTP token, and a path that does not
+  start with `/` or holds anything but visible ASCII, with `ValueError` before
+  anything is sent. A path such as `@host/...`, `:8443/...` or `v4/...` was appended
+  to the base URL and moved the signed request to another host or port; an invalid
+  method failed at send time as a connection error quoting it, or a raw `TypeError`.
+- `api_token` and `user_agent` holding a control character (line break, NUL, tab,
+  DEL), a non-ASCII character, or a space at either end raise `HuurayConfigError`
+  at construction, and a whitespace-only `api_token` counts as missing. A custom
+  nonce like that, or an empty one, raises `ValueError` before sending. Before,
+  such a value failed at send time as a connection error quoting the token or nonce
+  (for an order, `HuurayIndeterminateOrderError`), raised a `UnicodeEncodeError`
+  carrying it, or reached the wire; an empty nonce went out as an empty
+  `X-API-NONCE`. The new errors never quote the value.
+- `base_url` holding a space, control character or non-ASCII character raises
+  `HuurayConfigError` at construction, instead of failing or being percent-encoded
+  at request time.
+- `timeout` must be greater than 0 and at most 2147483.647 seconds, checked at
+  construction. 0 or a negative value made an order that was never sent raise
+  `HuurayIndeterminateOrderError`; `None` meant no timeout on both clients, and NaN
+  or infinity on the async one; a larger value raised `OverflowError` on Windows
+  and can wrap on Linux and macOS.
+
 ## [0.1.0] — unreleased
 
 First release. Complete coverage of the Huuray API v4.

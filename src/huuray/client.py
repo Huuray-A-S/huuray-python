@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 import time
 from dataclasses import dataclass
 from typing import Any, Callable, Generic, Optional, TypeVar
@@ -17,7 +18,13 @@ from urllib.parse import urlsplit
 import httpx
 
 from ._version import VERSION
-from .auth import DEFAULT_HASH_ENCODING, HashEncoding, build_auth_headers, generate_nonce
+from .auth import (
+    DEFAULT_HASH_ENCODING,
+    HashEncoding,
+    _is_sendable_header_value,
+    build_auth_headers,
+    generate_nonce,
+)
 from .errors import (
     HuurayAPIError,
     HuurayConfigError,
@@ -44,6 +51,24 @@ DEFAULT_BASE_URL = "https://api.huuray.com"
 
 #: Per-request timeout in seconds, applied when the client is built without one.
 DEFAULT_TIMEOUT = 30.0
+
+#: The longest ``timeout`` accepted, in seconds: 2147483647 ms, about 24.8 days.
+#:
+#: The largest value the runtime honours on every platform. CPython hands a
+#: socket timeout to the OS in milliseconds: above this, Windows raises
+#: ``OverflowError`` at request time, and on Linux and macOS it can be cast to a
+#: C ``int`` for ``poll()`` without a range check, which wraps into no timeout at
+#: all or a much shorter one.
+_MAX_TIMEOUT = 2_147_483.647
+
+#: An RFC 9110 method token, e.g. ``GET``.
+_METHOD_TOKEN = re.compile(r"[!#$%&'*+\-.^_`|~0-9A-Za-z]+")
+
+#: A request path: a leading "/" and visible ASCII only.
+_PATH = re.compile(r"/[\x21-\x7e]*")
+
+#: A base URL holds visible ASCII only — no space, control or non-ASCII character.
+_VISIBLE_ASCII = re.compile(r"[\x21-\x7e]+")
 
 T = TypeVar("T")
 
@@ -78,7 +103,9 @@ class _BaseClient:
         user_agent: Optional[str] = None,
         nonce_factory: Optional[Callable[[], str]] = None,
     ) -> None:
-        if not api_token:
+        # A token of only whitespace counts as missing: it can never be sent as the
+        # X-API-TOKEN header.
+        if not api_token or not api_token.strip():
             raise HuurayConfigError(
                 "api_token is required. Pass it explicitly, e.g. from "
                 "os.environ['HUURAY_API_TOKEN']."
@@ -87,6 +114,30 @@ class _BaseClient:
             raise HuurayConfigError(
                 "api_secret is required. Pass it explicitly, e.g. from "
                 "os.environ['HUURAY_API_SECRET']."
+            )
+        # Rejected, never stripped: left to httpx, a line break or a stray space fails
+        # at send time as a connection error quoting the token — for an order, as an
+        # indeterminate one — and other control characters reach the wire. The secret
+        # is not checked because it is never sent. Neither message quotes the value.
+        if not _is_sendable_header_value(api_token):
+            raise HuurayConfigError(
+                "api_token cannot be sent as the X-API-TOKEN header: it holds a line break, tab, "
+                "NUL or other control character, a non-ASCII character, or a space at either "
+                "end. A value read from a file often ends in a newline; strip it first."
+            )
+        if user_agent and not _is_sendable_header_value(user_agent):
+            raise HuurayConfigError(
+                "user_agent cannot be sent in the User-Agent header: it holds a line break, tab, "
+                "NUL or other control character, a non-ASCII character, or a space at either end."
+            )
+
+        # Checked before parsing, and not quoted: urlsplit() accepts a space, a
+        # control character or a non-ASCII character, which httpx then rejects or
+        # silently percent-encodes at request time.
+        if not _VISIBLE_ASCII.fullmatch(base_url or DEFAULT_BASE_URL):
+            raise HuurayConfigError(
+                "base_url contains a space, control character or non-ASCII character. "
+                f"Expected something like {DEFAULT_BASE_URL!r}."
             )
 
         self._api_token = api_token
@@ -105,6 +156,23 @@ class _BaseClient:
                 f"Expected something like {DEFAULT_BASE_URL!r}."
             )
         self._hash_encoding: HashEncoding = hash_encoding
+
+        # Refused here rather than discovered on an order. 0 makes the socket
+        # non-blocking and a negative value times out at once, so an order that was
+        # never sent raises HuurayIndeterminateOrderError. None means no timeout on
+        # both clients, and NaN or infinity on the async one, so a hung order never
+        # raises; on the sync client NaN, infinity and anything above _MAX_TIMEOUT
+        # fail at request time or wrap. A bool is an int in Python, never a timeout.
+        if (
+            isinstance(timeout, bool)
+            or not isinstance(timeout, (int, float))
+            or not 0 < timeout <= _MAX_TIMEOUT
+        ):
+            raise HuurayConfigError(
+                f"timeout must be a number of seconds greater than 0 and at most {_MAX_TIMEOUT}, "
+                f"received {timeout!r}. A request without a working timeout can hang forever, "
+                "and an order that never returns can never be reconciled."
+            )
         self._timeout = timeout
         self._retry = retry if retry is not None else DEFAULT_RETRY
         self._nonce_factory = nonce_factory or generate_nonce
@@ -120,6 +188,24 @@ class _BaseClient:
         The API rejects a repeated nonce for 60 days, so every retry attempt
         must be signed again rather than replayed.
         """
+        # The method goes into the request line and the path is appended to the
+        # base URL, so both are checked before anything else. A method that is not
+        # a token fails at send time as a connection error — for an order, as an
+        # indeterminate one. A path not starting with "/" moves the request to
+        # another host or port ("@host", ".host", ":port"), and a space, control or
+        # non-ASCII character is refused or silently percent-encoded by httpx.
+        # Neither value is quoted.
+        if not isinstance(op.method, str) or not _METHOD_TOKEN.fullmatch(op.method):
+            raise ValueError(
+                "The request was not sent: the HTTP method must be a token such as GET, "
+                "POST or DELETE."
+            )
+        if not isinstance(op.path, str) or not _PATH.fullmatch(op.path):
+            raise ValueError(
+                f'{op.method} request was not sent: the path must start with "/" and contain '
+                'only visible ASCII, e.g. "/v4/Search".'
+            )
+
         headers = build_auth_headers(
             api_token=self._api_token,
             api_secret=self._api_secret,
@@ -228,19 +314,24 @@ class HuurayClient(_BaseClient):
         for balance in huuray.balances.list().balances:
             print(balance.currency, balance.balance)
 
-    :param api_token: Your API token. Sent as ``X-API-TOKEN``.
+    :param api_token: Your API token. Sent as ``X-API-TOKEN``, so it must be
+        printable ASCII with no space at either end — strip a value read from a file.
     :param api_secret: Your API secret. Used to sign each request; never sent
         and never logged.
     :param base_url: Override the API host. Defaults to ``https://api.huuray.com``.
+        Must be an absolute http(s) URL of visible ASCII.
     :param hash_encoding: Encoding of the ``X-API-HASH`` digest. Defaults to
         lowercase hex. If you see a 401 with credentials you know are good, try
         another value.
-    :param timeout: Per-request timeout in seconds.
+    :param timeout: Per-request timeout in seconds, greater than 0 and at most
+        2147483.647 (about 24.8 days).
     :param retry: Retry behaviour for read operations. Writes are never retried.
     :param user_agent: Appended to the ``User-Agent``, e.g. your app and version.
+        Printable ASCII with no space at either end.
     :param nonce_factory: Supply your own nonce. Must be unique per request,
-        unused for 60 days, and at most 50 characters. The default (24 random
-        bytes, base64url) is right for almost everyone.
+        unused for 60 days, and 1 to 50 characters of printable ASCII with no
+        space at either end. The default (24 random bytes, base64url) is right
+        for almost everyone.
     :param transport: Inject an ``httpx`` transport — used by the test suite,
         and for proxies or custom TLS.
     """
@@ -334,6 +425,10 @@ class HuurayClient(_BaseClient):
 
         ``retryable`` defaults to ``False`` and must be opted into per call.
         Never set it on ``/v4/Order``, ``/v4/Resend``, or ``/v4/Cancel``.
+
+        ``method`` must be an HTTP token such as ``GET``, and ``path`` must start
+        with ``/`` and hold only visible ASCII; anything else raises ``ValueError``
+        before a request is sent.
 
         .. code-block:: python
 
