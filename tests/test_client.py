@@ -273,8 +273,9 @@ class TestConstruction:
     @pytest.mark.parametrize(
         "bad",
         [
-            # 0 made the socket non-blocking and a negative value timed out at once:
-            # an order that never left raised HuurayIndeterminateOrderError.
+            # 0 made an order that never left raise HuurayIndeterminateOrderError; a
+            # negative value did too on the async client, and raised a raw ValueError
+            # on the sync one.
             0,
             0.0,
             -1,

@@ -63,10 +63,11 @@ on 2026-08-15, unless another date is given:
   Before, every request raised a raw `UnicodeEncodeError` whose repr and args
   carried the secret and the nonce.
 - `timeout` must be greater than 0 and at most 2147483.647 seconds, checked at
-  construction. 0 or a negative value made an order that was never sent raise
-  `HuurayIndeterminateOrderError`; `None` meant no timeout on both clients, and NaN
-  or infinity on the async one; a larger value raised `OverflowError` on Windows
-  and can wrap on Linux and macOS.
+  construction. 0 made an order that was never sent raise
+  `HuurayIndeterminateOrderError`; a negative value did too on the async client, and
+  raised a raw `ValueError` on the sync one; `None` meant no timeout on both clients,
+  and NaN or infinity on the async one; a larger value raised `OverflowError` on
+  Windows and can wrap on Linux and macOS.
 
 ### Fixed
 

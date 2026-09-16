@@ -200,12 +200,13 @@ class _BaseClient:
         self._base_url = (base_url or DEFAULT_BASE_URL).rstrip("/")
         self._hash_encoding: HashEncoding = hash_encoding
 
-        # Refused here rather than discovered on an order. 0 makes the socket
-        # non-blocking and a negative value times out at once, so an order that was
-        # never sent raises HuurayIndeterminateOrderError. None means no timeout on
-        # both clients, and NaN or infinity on the async one, so a hung order never
-        # raises; on the sync client NaN, infinity and anything above _MAX_TIMEOUT
-        # fail at request time or wrap. A bool is an int in Python, never a timeout.
+        # Refused here rather than discovered on an order. 0 makes an order that was
+        # never sent raise HuurayIndeterminateOrderError; a negative value does too on
+        # the async client and raises a raw ValueError on the sync one. None means no
+        # timeout on both clients, and NaN or infinity on the async one, so a hung
+        # order never raises; on the sync client NaN, infinity and anything above
+        # _MAX_TIMEOUT fail at request time or wrap. A bool is an int in Python, never
+        # a timeout.
         if (
             isinstance(timeout, bool)
             or not isinstance(timeout, (int, float))
