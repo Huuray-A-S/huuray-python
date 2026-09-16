@@ -124,6 +124,18 @@ class TestEntryPoint:
         assert main(["search", "--ref-id", "x"]) == 1
         assert 'Run "huuray --help"' in capsys.readouterr().err
 
+    def test_a_config_error_prints_one_error_line_not_a_traceback(self, capsys, monkeypatch):
+        # The client used to be built outside the try, so a HuurayConfigError escaped
+        # main() as a traceback. The client is refused at construction: nothing is sent.
+        monkeypatch.setenv("HUURAY_API_TOKEN", "test-token")
+        monkeypatch.setenv("HUURAY_API_SECRET", "test-secret")
+        monkeypatch.setenv("HUURAY_BASE_URL", "http://leakyuser:leakypw@127.0.0.1:9")
+        assert main(["balance"]) == 1
+        captured = capsys.readouterr()
+        assert captured.err.startswith("Error: base_url contains user-info")
+        assert captured.err.count("\n") == 1
+        assert "leaky" not in captured.err + captured.out
+
 
 class TestTemplatesCommand:
     #: Invented values. Country is null to pin that a null prints as an empty cell.

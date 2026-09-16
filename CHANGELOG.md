@@ -70,6 +70,9 @@ on 2026-08-15, unless another date is given:
 
 ### Fixed
 
+- The CLI prints a `HuurayConfigError`, such as one for a bad `HUURAY_BASE_URL`, as
+  one `Error:` line and exits 1. The client was built outside the error handling, so
+  it was a traceback.
 - The README Feedback section no longer invites pull requests, which this
   repository does not accept.
 - The recipient-count guard is documented as applying when `template_id` is set,

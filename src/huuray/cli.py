@@ -217,14 +217,16 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         return 1
 
     base_url = os.environ.get("HUURAY_BASE_URL")
-    client = HuurayClient(
-        api_token=api_token,
-        api_secret=api_secret,
-        base_url=base_url or DEFAULT_BASE_URL,
-        user_agent="huuray-cli",
-    )
 
+    # Built inside the try: a HuurayConfigError (a bad HUURAY_BASE_URL, say) prints
+    # as one line like any other error, not as a traceback.
     try:
+        client = HuurayClient(
+            api_token=api_token,
+            api_secret=api_secret,
+            base_url=base_url or DEFAULT_BASE_URL,
+            user_agent="huuray-cli",
+        )
         with client:
             return _run(client, args)
     except HuurayAPIError as err:
