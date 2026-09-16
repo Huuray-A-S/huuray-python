@@ -25,14 +25,29 @@ Rows = Callable[[], list[dict[str, Any]]]
 
 
 def _emit(data: Any, rows: Rows, *, as_json: bool) -> None:
+    """Print a result as one table, or as JSON. See :func:`_emit_sections`."""
+    _emit_sections(data, [(None, rows)], as_json=as_json)
+
+
+def _emit_sections(
+    data: Any, sections: Sequence[tuple[Optional[str], Rows]], *, as_json: bool
+) -> None:
     """Print a result. Redaction runs on both paths — codes never reach stdout.
+
+    Table output prints one table per section, each under its title when it has
+    one, separated by a blank line. JSON output prints ``data`` as it is.
 
     ``redact()`` understands dataclasses, so the result objects this SDK returns
     are stripped just as thoroughly as a raw response body would be.
     """
     if as_json:
         print(json.dumps(redact(data), indent=2, default=str))
-    else:
+        return
+    for index, (title, rows) in enumerate(sections):
+        if index:
+            print()
+        if title is not None:
+            print(title)
         print(table([redact(row) for row in rows()]))
 
 
@@ -76,17 +91,38 @@ def _run(client: HuurayClient, args: Any) -> int:
 
     if args.command == "templates":
         templates = client.templates.list()
-        _emit(
-            templates.templates,
-            lambda: [
-                {
-                    "id": row.id,
-                    "name": row.name or "",
-                    "type": row.type or "",
-                    "language": row.language or "",
-                    "sender": row.sender or "",
-                }
-                for row in templates.templates
+        # Both lists, always: an account whose templates are all PDF templates
+        # must not print as if it had none.
+        _emit_sections(
+            {"templates": templates.templates, "pdf_templates": templates.pdf_templates},
+            [
+                (
+                    "Delivery templates",
+                    lambda: [
+                        {
+                            "id": row.id,
+                            "name": row.name or "",
+                            "type": row.type or "",
+                            "language": row.language or "",
+                            "sender": row.sender or "",
+                        }
+                        for row in templates.templates
+                    ],
+                ),
+                (
+                    "PDF templates",
+                    lambda: [
+                        {
+                            "uid": row.uid or "",
+                            "name": row.name or "",
+                            "type": row.type or "",
+                            "language": row.language or "",
+                            "country": row.country or "",
+                            "brand": row.brand_name or "",
+                        }
+                        for row in templates.pdf_templates
+                    ],
+                ),
             ],
             as_json=as_json,
         )

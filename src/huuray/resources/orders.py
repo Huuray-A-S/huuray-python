@@ -190,8 +190,9 @@ def _order_operation(
 
     if pdf_template_uid is not None and template_id is None:
         raise ValueError(
-            "pdf_template_uid requires template_id — the API attaches the PDF to the emails "
-            "sent by the delivery template, which must be an email template."
+            "template_id is required when pdf_template_uid is set — the API attaches the PDF "
+            "template to the emails sent by the delivery template, which must be an email "
+            "template."
         )
 
     if template_id is not None:

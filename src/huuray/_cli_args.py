@@ -51,7 +51,9 @@ def build_parser() -> argparse.ArgumentParser:
         help="the entire Huuray catalogue, without tokens or discounts",
     )
 
-    subcommands.add_parser("templates", parents=[common], help="delivery templates on your account")
+    subcommands.add_parser(
+        "templates", parents=[common], help="Delivery and PDF templates on your account"
+    )
 
     stock = subcommands.add_parser("stock", parents=[common], help="stock for a product")
     stock.add_argument("--token", required=True, metavar="TOKEN", help="the product token")

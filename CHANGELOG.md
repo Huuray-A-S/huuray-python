@@ -43,6 +43,8 @@ First release. Complete coverage of the Huuray API v4.
   is also set; the API requires that template to be an email template.
 - `request()` — an escape hatch that signs any call.
 - Read-only CLI: `balance`, `catalogue`, `templates`, `stock`, `rates`, `search`.
+- The CLI's `templates` command lists PDF templates as well as delivery templates,
+  in both table and `--json` output.
 - `redact()` and `safe_json()` for keeping voucher codes out of logs, understanding
   both raw response bodies and the dataclasses this SDK returns.
 - Typed throughout, with a `py.typed` marker; `httpx` is the only runtime dependency.
