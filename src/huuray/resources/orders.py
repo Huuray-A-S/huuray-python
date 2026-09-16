@@ -388,7 +388,11 @@ class OrdersResource(Resource):
         :param pdf_template_uid: Optional PDF template uid from
             ``templates.list().pdf_templates``, attached as a document to the
             emails sent by ``template_id``. Requires ``template_id``, which the
-            API requires to be an email template.
+            API requires to be an email template. The PDF template must also be
+            available for the ordered product's brand and country (``brand_name``
+            / ``country`` on the PDF template, where ``None`` means any); otherwise
+            the API rejects the order with a 422, raised as
+            ``HuurayValidationError``. This client does not pre-check that.
         :param recipients: Required when ``template_id`` is set. The count must
             be either 1 or exactly ``quantity``.
         """
