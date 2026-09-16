@@ -171,6 +171,7 @@ def _order_operation(
     expires: Optional[DateTimeLike],
     ref_id: Optional[str],
     template_id: Optional[int],
+    pdf_template_uid: Optional[str],
     delivery_datetime: Optional[DateTimeLike],
     personal_message: Optional[str],
     recipients: Optional[Sequence[Recipient]],
@@ -185,6 +186,12 @@ def _order_operation(
         raise ValueError(
             f"Synchronous orders are limited to {SYNC_QUANTITY_LIMIT} codes; "
             f"received {quantity}. Use orders.create() for larger orders."
+        )
+
+    if pdf_template_uid is not None and template_id is None:
+        raise ValueError(
+            "pdf_template_uid requires template_id — the API attaches the PDF to the emails "
+            "sent by the delivery template, which must be an email template."
         )
 
     if template_id is not None:
@@ -214,6 +221,7 @@ def _order_operation(
             "Sync": sync,
             "RefID": ref_id,
             "DeliveryTemplateId": template_id,
+            "DeliveryPDFTemplateUid": pdf_template_uid,
             "DeliveryDatetime": to_datetime(delivery_datetime),
             "PersonalMessage": personal_message,
             "Recipients": (
@@ -351,6 +359,7 @@ class OrdersResource(Resource):
         expires: Optional[DateTimeLike] = None,
         ref_id: Optional[str] = None,
         template_id: Optional[int] = None,
+        pdf_template_uid: Optional[str] = None,
         delivery_datetime: Optional[DateTimeLike] = None,
         personal_message: Optional[str] = None,
         recipients: Optional[Sequence[Recipient]] = None,
@@ -375,6 +384,10 @@ class OrdersResource(Resource):
             it is what makes an order recoverable after a timeout.
         :param template_id: Delivery template id from ``templates.list()``.
             Omit for no delivery.
+        :param pdf_template_uid: Optional PDF template uid from
+            ``templates.list().pdf_templates``, attached as a document to the
+            emails sent by ``template_id``. Requires ``template_id``, which the
+            API requires to be an email template.
         :param recipients: Required when ``template_id`` is set. The count must
             be either 1 or exactly ``quantity``.
         """
@@ -387,6 +400,7 @@ class OrdersResource(Resource):
             expires=expires,
             ref_id=ref_id,
             template_id=template_id,
+            pdf_template_uid=pdf_template_uid,
             delivery_datetime=delivery_datetime,
             personal_message=personal_message,
             recipients=recipients,
@@ -403,6 +417,7 @@ class OrdersResource(Resource):
         expires: Optional[DateTimeLike] = None,
         ref_id: Optional[str] = None,
         template_id: Optional[int] = None,
+        pdf_template_uid: Optional[str] = None,
         delivery_datetime: Optional[DateTimeLike] = None,
         personal_message: Optional[str] = None,
         recipients: Optional[Sequence[Recipient]] = None,
@@ -426,6 +441,7 @@ class OrdersResource(Resource):
             expires=expires,
             ref_id=ref_id,
             template_id=template_id,
+            pdf_template_uid=pdf_template_uid,
             delivery_datetime=delivery_datetime,
             personal_message=personal_message,
             recipients=recipients,
@@ -444,6 +460,7 @@ class OrdersResource(Resource):
         expires: Optional[DateTimeLike] = None,
         delivery_datetime: Optional[DateTimeLike] = None,
         personal_message: Optional[str] = None,
+        pdf_template_uid: Optional[str] = None,
     ) -> CreateOrderResult:
         """Send one gift card to one recipient — the common case, in one call.
 
@@ -461,6 +478,7 @@ class OrdersResource(Resource):
             quantity=1,
             ref_id=_require_ref_id(ref_id),
             template_id=template_id,
+            pdf_template_uid=pdf_template_uid,
             recipients=[recipient],
             expires=expires,
             delivery_datetime=delivery_datetime,
@@ -567,6 +585,7 @@ class AsyncOrdersResource(AsyncResource):
         expires: Optional[DateTimeLike] = None,
         ref_id: Optional[str] = None,
         template_id: Optional[int] = None,
+        pdf_template_uid: Optional[str] = None,
         delivery_datetime: Optional[DateTimeLike] = None,
         personal_message: Optional[str] = None,
         recipients: Optional[Sequence[Recipient]] = None,
@@ -581,6 +600,7 @@ class AsyncOrdersResource(AsyncResource):
             expires=expires,
             ref_id=ref_id,
             template_id=template_id,
+            pdf_template_uid=pdf_template_uid,
             delivery_datetime=delivery_datetime,
             personal_message=personal_message,
             recipients=recipients,
@@ -597,6 +617,7 @@ class AsyncOrdersResource(AsyncResource):
         expires: Optional[DateTimeLike] = None,
         ref_id: Optional[str] = None,
         template_id: Optional[int] = None,
+        pdf_template_uid: Optional[str] = None,
         delivery_datetime: Optional[DateTimeLike] = None,
         personal_message: Optional[str] = None,
         recipients: Optional[Sequence[Recipient]] = None,
@@ -611,6 +632,7 @@ class AsyncOrdersResource(AsyncResource):
             expires=expires,
             ref_id=ref_id,
             template_id=template_id,
+            pdf_template_uid=pdf_template_uid,
             delivery_datetime=delivery_datetime,
             personal_message=personal_message,
             recipients=recipients,
@@ -629,6 +651,7 @@ class AsyncOrdersResource(AsyncResource):
         expires: Optional[DateTimeLike] = None,
         delivery_datetime: Optional[DateTimeLike] = None,
         personal_message: Optional[str] = None,
+        pdf_template_uid: Optional[str] = None,
     ) -> CreateOrderResult:
         """Send one gift card to one recipient. See :meth:`OrdersResource.send_reward`."""
         return await self.create(
@@ -638,6 +661,7 @@ class AsyncOrdersResource(AsyncResource):
             quantity=1,
             ref_id=_require_ref_id(ref_id),
             template_id=template_id,
+            pdf_template_uid=pdf_template_uid,
             recipients=[recipient],
             expires=expires,
             delivery_datetime=delivery_datetime,

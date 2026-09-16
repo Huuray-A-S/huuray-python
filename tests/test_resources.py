@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 
 import pytest
 
-from huuray import HuurayNotFoundError
+from huuray import HuurayNotFoundError, PdfTemplate
 
 from .helpers import MockResponse, make_async_client, make_client
 
@@ -100,6 +100,81 @@ class TestTemplatesList:
             "da",
         )
 
+    def test_maps_every_pdf_template_field_including_null_country_and_brand(self):
+        client, _ = make_client(
+            MockResponse(
+                json={
+                    "Templates": [],
+                    "PDFTemplates": [
+                        {
+                            "Uid": "pdf-uid-test-1",
+                            "Name": "Test PDF, any country",
+                            "Type": "TestType",
+                            "Language": "en",
+                            "Country": None,
+                            "BrandName": None,
+                        },
+                        {
+                            "Uid": "pdf-uid-test-2",
+                            "Name": "Test PDF, one brand",
+                            "Type": "TestType",
+                            "Language": "da",
+                            "Country": "Testland",
+                            "BrandName": "Test Brand",
+                        },
+                    ],
+                }
+            )
+        )
+        result = client.templates.list()
+        # An account whose templates are all PDF templates must not read as empty.
+        assert result.templates == []
+        assert result.pdf_templates == [
+            PdfTemplate(
+                uid="pdf-uid-test-1",
+                name="Test PDF, any country",
+                type="TestType",
+                language="en",
+                country=None,
+                brand_name=None,
+            ),
+            PdfTemplate(
+                uid="pdf-uid-test-2",
+                name="Test PDF, one brand",
+                type="TestType",
+                language="da",
+                country="Testland",
+                brand_name="Test Brand",
+            ),
+        ]
+
+    def test_returns_pdf_templates_alongside_ordinary_templates(self):
+        client, _ = make_client(
+            MockResponse(
+                json={
+                    "Templates": [{"Id": 42, "Name": "Default"}],
+                    "PDFTemplates": [{"Uid": "pdf-uid-test-1"}],
+                }
+            )
+        )
+        result = client.templates.list()
+        assert [t.id for t in result.templates] == [42]
+        assert [t.uid for t in result.pdf_templates] == ["pdf-uid-test-1"]
+
+    @pytest.mark.parametrize(
+        "body",
+        [
+            {"Templates": [{"Id": 42}], "PDFTemplates": None},
+            {"Templates": [{"Id": 42}]},
+        ],
+        ids=["null", "absent"],
+    )
+    def test_null_or_absent_pdf_templates_map_to_an_empty_list(self, body):
+        client, _ = make_client(MockResponse(json=body))
+        result = client.templates.list()
+        assert [t.id for t in result.templates] == [42]
+        assert result.pdf_templates == []
+
     def test_an_account_with_no_templates_gets_a_404_not_an_empty_list(self):
         # Live-observed: the API answers 404 "There were no active templates".
         client, _ = make_client(
@@ -192,6 +267,44 @@ class TestAsyncResourceParity:
 
         await async_client.aclose()
         sync_client.close()
+
+    async def test_the_async_templates_list_maps_pdf_templates_too(self):
+        client, _ = make_async_client(
+            MockResponse(
+                json={
+                    "Templates": None,
+                    "PDFTemplates": [
+                        {
+                            "Uid": "pdf-uid-test-1",
+                            "Name": "Test PDF",
+                            "Type": "TestType",
+                            "Language": "en",
+                            "Country": None,
+                            "BrandName": None,
+                        }
+                    ],
+                }
+            )
+        )
+        async with client:
+            result = await client.templates.list()
+        assert result.templates == []
+        assert result.pdf_templates == [
+            PdfTemplate(
+                uid="pdf-uid-test-1",
+                name="Test PDF",
+                type="TestType",
+                language="en",
+                country=None,
+                brand_name=None,
+            )
+        ]
+
+    async def test_the_async_templates_list_maps_absent_pdf_templates_to_empty(self):
+        client, _ = make_async_client(MockResponse(json={"Templates": [{"Id": 42}]}))
+        async with client:
+            result = await client.templates.list()
+        assert result.pdf_templates == []
 
     async def test_the_async_resources_send_identical_requests(self):
         client, calls = make_async_client(MockResponse(json={"Products": []}))

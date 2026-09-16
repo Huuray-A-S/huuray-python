@@ -291,6 +291,7 @@ class HuurayClient(_BaseClient):
         expires: Any = None,
         delivery_datetime: Any = None,
         personal_message: Optional[str] = None,
+        pdf_template_uid: Optional[str] = None,
     ) -> CreateOrderResult:
         """Send one gift card to one recipient — the common case, in one call.
 
@@ -313,6 +314,7 @@ class HuurayClient(_BaseClient):
             expires=expires,
             delivery_datetime=delivery_datetime,
             personal_message=personal_message,
+            pdf_template_uid=pdf_template_uid,
         )
 
     def request(
@@ -455,6 +457,7 @@ class AsyncHuurayClient(_BaseClient):
         expires: Any = None,
         delivery_datetime: Any = None,
         personal_message: Optional[str] = None,
+        pdf_template_uid: Optional[str] = None,
     ) -> CreateOrderResult:
         """Send one gift card to one recipient. See :meth:`HuurayClient.send_reward`."""
         return await self.orders.send_reward(
@@ -467,6 +470,7 @@ class AsyncHuurayClient(_BaseClient):
             expires=expires,
             delivery_datetime=delivery_datetime,
             personal_message=personal_message,
+            pdf_template_uid=pdf_template_uid,
         )
 
     async def request(

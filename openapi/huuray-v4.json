@@ -1347,6 +1347,11 @@
             "format": "int32",
             "nullable": true
           },
+          "DeliveryPDFTemplateUid": {
+            "type": "string",
+            "description": "An optional PDF template (see the Template endpoint) to attach as a document to the emails sent by DeliveryTemplateId. Requires DeliveryTemplateId to be an email template",
+            "nullable": true
+          },
           "DeliveryDatetime": {
             "type": "string",
             "description": "An optional future date for delivery to take place, if null delivery will happen as soon as possible",
@@ -1448,6 +1453,44 @@
         },
         "additionalProperties": false,
         "description": "An object containing information about a voucher"
+      },
+      "PDFTemplateItem": {
+        "title": "PDF Template Item",
+        "type": "object",
+        "properties": {
+          "Uid": {
+            "type": "string",
+            "description": "Unique PDF template identifier (used as DeliveryPDFTemplateUid in the Order endpoint)",
+            "nullable": true
+          },
+          "Name": {
+            "type": "string",
+            "description": "PDF template name",
+            "nullable": true
+          },
+          "Type": {
+            "type": "string",
+            "description": "PDF template type name",
+            "nullable": true
+          },
+          "Language": {
+            "type": "string",
+            "description": "Language IsoAlpha2 code",
+            "nullable": true
+          },
+          "Country": {
+            "type": "string",
+            "description": "The country the template can be used for (null if it can be used for any country)",
+            "nullable": true
+          },
+          "BrandName": {
+            "type": "string",
+            "description": "The brand the template can be used for (null if it can be used for any brand)",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "An object containing information about a PDF template"
       },
       "ResendRequest": {
         "title": "Resend Request",
@@ -1806,6 +1849,14 @@
               "$ref": "#/components/schemas/TemplateItem"
             },
             "description": "The list of templates",
+            "nullable": true
+          },
+          "PDFTemplates": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PDFTemplateItem"
+            },
+            "description": "The list of PDF templates, used to deliver the codes as a document attached to an email",
             "nullable": true
           },
           "Status": {
