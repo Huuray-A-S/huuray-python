@@ -158,6 +158,7 @@ class TestConstruction:
             "http://127.0.0.1:5%",
             # httpx does not check the range, or that there is a host.
             "http://127.0.0.1:99999",
+            "https://127.0.0.1:99999",
             "http://127.0.0.1:0",
             "http://leaky.example.test:65536",
             "http://:80",
@@ -167,7 +168,6 @@ class TestConstruction:
             "http://a..b",
             "https://.",
             "https://" + "a" * 64 + ".example.test",
-            "https://127.0.0.1:99999",
             # A raw ValueError from urlsplit() here, some quoting the host.
             "http://[::1",
             "http://[leaky]",
