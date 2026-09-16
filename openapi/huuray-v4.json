@@ -2,7 +2,7 @@
   "openapi": "3.0.4",
   "info": {
     "title": "Huuray API",
-    "description": "Huuray API for B2B customers (last updated april 2025)",
+    "description": "Huuray API for B2B customers (last updated september 2026)",
     "contact": {
       "name": "Support",
       "email": "tech@huuray.com"
@@ -418,7 +418,7 @@
           "Order"
         ],
         "summary": "Used to order giftcards",
-        "description": "The giftcards will be sent out as redeemable links. They will be sent out automatically via Email or SMS, or returned in a callback if you have set one up and enabled this feature",
+        "description": "The giftcards will be sent out as redeemable links. They will be sent out automatically via Email or SMS, or returned in a callback if you have set one up and enabled this feature. When delivering via Email, a PDF template from the Template endpoint can optionally be attached to each email as a document (DeliveryPDFTemplateUid). The PDF template must be available for the ordered product's brand and country, otherwise the order is rejected with a 422",
         "parameters": [
           {
             "name": "X-API-NONCE",
@@ -874,7 +874,7 @@
           "Template"
         ],
         "summary": "Used to get a list of the available templates",
-        "description": "The list will include both texts and type",
+        "description": "Returns the Email/SMS templates (with texts and type) that can be used as DeliveryTemplateId in the Order endpoint, and the PDF templates (with country and brand) that can be attached to the emails as DeliveryPDFTemplateUid",
         "parameters": [
           {
             "name": "X-API-NONCE",
