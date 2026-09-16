@@ -34,6 +34,13 @@ First release. Complete coverage of the Huuray API v4.
 - All nine v4 operations: balances, catalogue, templates, stock, exchange rates,
   orders (create, create_sync, search, resend, cancel).
 - `send_reward()` — one gift card to one recipient in a single call.
+- PDF delivery templates, added to the v4 specification: `templates.list()` returns
+  `pdf_templates` (`PdfTemplate`: `uid`, `name`, `type`, `language`, `country`,
+  `brand_name`) alongside `templates`, so an account whose templates are all PDF
+  templates does not read as empty. `orders.create()`, `orders.create_sync()` and
+  `send_reward()` accept an optional `pdf_template_uid`, sent as
+  `DeliveryPDFTemplateUid`. It is rejected before any request unless `template_id`
+  is also set; the API requires that template to be an email template.
 - `request()` — an escape hatch that signs any call.
 - Read-only CLI: `balance`, `catalogue`, `templates`, `stock`, `rates`, `search`.
 - `redact()` and `safe_json()` for keeping voucher codes out of logs, understanding

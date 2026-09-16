@@ -63,7 +63,7 @@ from .resources.orders import (
     Voucher,
 )
 from .resources.stock import CheckStockResult
-from .resources.templates import ListTemplatesResult, Template
+from .resources.templates import ListTemplatesResult, PdfTemplate, Template
 from .retry import DEFAULT_RETRY, RetryOptions
 
 __all__ = [
@@ -100,6 +100,7 @@ __all__ = [
     "ListBalancesResult",
     "ListCatalogueResult",
     "ListTemplatesResult",
+    "PdfTemplate",
     "RawResponse",
     "Recipient",
     "ResendResult",

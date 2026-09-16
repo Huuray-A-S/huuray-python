@@ -245,6 +245,90 @@ class TestSendReward:
         assert len(calls) == 1
 
 
+class TestPdfTemplateDelivery:
+    """``DeliveryPDFTemplateUid``: optional, and only meaningful with a delivery template."""
+
+    def test_create_sends_the_pdf_template_uid_alongside_the_delivery_template(self):
+        client, calls = make_client(MockResponse(json={"OrderUID": "x"}))
+        client.orders.create(
+            **BASE,
+            template_id=42,
+            pdf_template_uid="pdf-uid-test-1",
+            recipients=[Recipient(email="a@example.com")],
+        )
+        assert calls[0].body["DeliveryTemplateId"] == 42
+        assert calls[0].body["DeliveryPDFTemplateUid"] == "pdf-uid-test-1"
+
+    def test_create_sync_sends_it_too(self):
+        client, calls = make_client(MockResponse(json={"OrderUID": "x"}))
+        client.orders.create_sync(
+            **BASE,
+            template_id=42,
+            pdf_template_uid="pdf-uid-test-1",
+            recipients=[Recipient(email="a@example.com")],
+        )
+        assert calls[0].body["Sync"] is True
+        assert calls[0].body["DeliveryPDFTemplateUid"] == "pdf-uid-test-1"
+
+    def test_send_reward_passes_it_through(self):
+        client, calls = make_client(MockResponse(json={"OrderUID": "x"}))
+        client.orders.send_reward(
+            product_token="tok",
+            value=5000,
+            currency="DKK",
+            recipient=Recipient(email="jane@example.com"),
+            template_id=42,
+            ref_id="r-1",
+            pdf_template_uid="pdf-uid-test-1",
+        )
+        assert calls[0].body["DeliveryPDFTemplateUid"] == "pdf-uid-test-1"
+
+    def test_the_client_level_send_reward_passes_it_through(self):
+        client, calls = make_client(MockResponse(json={"OrderUID": "x"}))
+        client.send_reward(
+            product_token="tok",
+            value=5000,
+            currency="DKK",
+            recipient=Recipient(email="jane@example.com"),
+            template_id=42,
+            ref_id="r-1",
+            pdf_template_uid="pdf-uid-test-1",
+        )
+        assert calls[0].body["DeliveryPDFTemplateUid"] == "pdf-uid-test-1"
+
+    @pytest.mark.parametrize("method", ["create", "create_sync"])
+    def test_create_methods_omit_the_key_entirely_when_not_supplied(self, method):
+        client, calls = make_client(MockResponse(json={"OrderUID": "x"}))
+        getattr(client.orders, method)(
+            **BASE, template_id=42, recipients=[Recipient(email="a@example.com")]
+        )
+        assert "DeliveryPDFTemplateUid" not in calls[0].body
+
+    def test_send_reward_omits_the_key_entirely_when_not_supplied(self):
+        client, calls = make_client(MockResponse(json={"OrderUID": "x"}))
+        client.orders.send_reward(
+            product_token="tok",
+            value=5000,
+            currency="DKK",
+            recipient=Recipient(email="jane@example.com"),
+            template_id=42,
+            ref_id="r-1",
+        )
+        assert "DeliveryPDFTemplateUid" not in calls[0].body
+
+    @pytest.mark.parametrize("method", ["create", "create_sync"])
+    def test_rejects_a_pdf_template_without_a_delivery_template_before_sending(self, method):
+        client, calls = make_client(MockResponse(json={"OrderUID": "x"}))
+        with pytest.raises(ValueError, match="pdf_template_uid requires template_id"):
+            getattr(client.orders, method)(**BASE, pdf_template_uid="pdf-uid-test-1")
+        assert calls == []
+
+    def test_the_rejection_says_the_api_needs_an_email_template(self):
+        client, _ = make_client()
+        with pytest.raises(ValueError, match="email template"):
+            client.orders.create(**BASE, pdf_template_uid="pdf-uid-test-1")
+
+
 class TestIndeterminateOrders:
     def test_raises_when_the_connection_drops(self):
         client, _ = make_client(MockResponse(raises=httpx.ConnectError("socket hang up")))
@@ -450,6 +534,65 @@ class TestAsyncOrders:
         async with client:
             result = await client.orders.cancel(order_uid="uid")
         assert result.partial is True
+
+    async def test_create_and_create_sync_send_the_pdf_template_uid(self):
+        client, calls = make_async_client(MockResponse(json={"OrderUID": "x"}))
+        async with client:
+            await client.orders.create(
+                **BASE,
+                template_id=42,
+                pdf_template_uid="pdf-uid-test-1",
+                recipients=[Recipient(email="a@example.com")],
+            )
+            await client.orders.create_sync(
+                **BASE,
+                template_id=42,
+                pdf_template_uid="pdf-uid-test-1",
+                recipients=[Recipient(email="a@example.com")],
+            )
+        assert [call.body["DeliveryPDFTemplateUid"] for call in calls] == ["pdf-uid-test-1"] * 2
+
+    async def test_both_send_rewards_pass_the_pdf_template_uid_through(self):
+        client, calls = make_async_client(MockResponse(json={"OrderUID": "x"}))
+        reward: dict[str, Any] = {
+            "product_token": "tok",
+            "value": 5000,
+            "currency": "DKK",
+            "recipient": Recipient(email="jane@example.com"),
+            "template_id": 42,
+            "ref_id": "r-1",
+            "pdf_template_uid": "pdf-uid-test-1",
+        }
+        async with client:
+            await client.orders.send_reward(**reward)
+            await client.send_reward(**reward)
+        assert [call.body["DeliveryPDFTemplateUid"] for call in calls] == ["pdf-uid-test-1"] * 2
+
+    async def test_omits_the_pdf_template_uid_when_not_supplied(self):
+        client, calls = make_async_client(MockResponse(json={"OrderUID": "x"}))
+        async with client:
+            await client.orders.create(
+                **BASE, template_id=42, recipients=[Recipient(email="a@example.com")]
+            )
+            await client.orders.send_reward(
+                product_token="tok",
+                value=5000,
+                currency="DKK",
+                recipient=Recipient(email="jane@example.com"),
+                template_id=42,
+                ref_id="r-1",
+            )
+        assert len(calls) == 2
+        assert all("DeliveryPDFTemplateUid" not in call.body for call in calls)
+
+    async def test_rejects_a_pdf_template_without_a_delivery_template_before_sending(self):
+        client, calls = make_async_client(MockResponse(json={"OrderUID": "x"}))
+        async with client:
+            with pytest.raises(ValueError, match="pdf_template_uid requires template_id"):
+                await client.orders.create(**BASE, pdf_template_uid="pdf-uid-test-1")
+            with pytest.raises(ValueError, match="pdf_template_uid requires template_id"):
+                await client.orders.create_sync(**BASE, pdf_template_uid="pdf-uid-test-1")
+        assert calls == []
 
     async def test_send_reward_requires_a_ref_id(self):
         client, calls = make_async_client()

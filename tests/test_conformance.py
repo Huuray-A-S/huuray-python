@@ -172,6 +172,7 @@ def exercise_everything(client: Any) -> Any:
             expires=EXPIRES,
             ref_id="ref-1",
             template_id=42,
+            pdf_template_uid="pdf-template-uid-1",
             delivery_datetime=DELIVER_AT,
             personal_message="Thank you",
             recipients=[
@@ -187,6 +188,7 @@ def exercise_everything(client: Any) -> Any:
             expires=EXPIRES,
             ref_id="ref-sync",
             template_id=42,
+            pdf_template_uid="pdf-template-uid-1",
             delivery_datetime=DELIVER_AT,
             personal_message="Thanks",
             recipients=[Recipient(name="C", email="c@example.com", ref_id="r-c")],
@@ -201,6 +203,7 @@ def exercise_everything(client: Any) -> Any:
             personal_message="Nice work",
             expires="2027-01-01T00:00:00Z",
             delivery_datetime="2026-09-01T09:00:00Z",
+            pdf_template_uid="pdf-template-uid-1",
         ),
         client.orders.search(
             order_uid="uid",
@@ -295,6 +298,16 @@ class TestRequestConformanceGate:
             failures.extend(validate(schema, call.body, f"{call.method} {call.path}"))
 
         assert failures == []
+
+    def test_every_order_request_in_the_harness_carries_the_pdf_template_uid(self, calls):
+        # The gate above only validates fields the harness actually sends. This
+        # pins DeliveryPDFTemplateUid into all three order calls, so its name
+        # and type are checked against OrderRequest rather than slipping past.
+        orders = [call for call in calls if call.path == "/v4/Order"]
+        assert len(orders) == 3
+        assert [call.body.get("DeliveryPDFTemplateUid") for call in orders] == [
+            "pdf-template-uid-1"
+        ] * 3
 
     def test_sends_no_body_to_post_v4_template_which_declares_none(self, calls):
         template_call = next(call for call in calls if call.path == "/v4/Template")
