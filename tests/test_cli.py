@@ -2,10 +2,34 @@
 
 from __future__ import annotations
 
+import json
+from typing import Any
+
 import pytest
 
+from huuray import cli
 from huuray._cli_args import build_parser, table
 from huuray.cli import main
+
+from .helpers import CapturedRequest, MockResponse, make_client
+
+
+def run_cli(
+    argv: list[str], response: MockResponse, monkeypatch: Any, capsys: Any
+) -> tuple[int, str, list[CapturedRequest]]:
+    """Run ``main()`` against the fake transport. Nothing here can reach the network.
+
+    ``main()`` builds its own client, so the constructor is swapped for one that
+    returns a client wired to the recording transport. ``monkeypatch.setattr``
+    raises if the name is missing, so a rename cannot silently fall back to a
+    real client.
+    """
+    client, calls = make_client(response)
+    monkeypatch.setattr(cli, "HuurayClient", lambda **_: client)
+    monkeypatch.setenv("HUURAY_API_TOKEN", "test-token")
+    monkeypatch.setenv("HUURAY_API_SECRET", "test-secret")
+    code = main(argv)
+    return code, capsys.readouterr().out, calls
 
 
 class TestParsing:
@@ -99,6 +123,54 @@ class TestEntryPoint:
         monkeypatch.setenv("HUURAY_API_SECRET", "s")
         assert main(["search", "--ref-id", "x"]) == 1
         assert 'Run "huuray --help"' in capsys.readouterr().err
+
+
+class TestTemplatesCommand:
+    #: Invented values. Country is null to pin that a null prints as an empty cell.
+    RESPONSE = MockResponse(
+        json={
+            "Templates": [],
+            "PDFTemplates": [
+                {
+                    "Uid": "pdf-uid-cli-test",
+                    "Name": "Invented-PDF-Template",
+                    "Type": "InventedType",
+                    "Language": "xx",
+                    "Country": None,
+                    "BrandName": "Invented Brand",
+                }
+            ],
+        }
+    )
+
+    def test_prints_pdf_templates_when_there_are_no_delivery_templates(self, monkeypatch, capsys):
+        code, out, calls = run_cli(["templates"], self.RESPONSE, monkeypatch, capsys)
+        assert code == 0
+        assert [call.path for call in calls] == ["/v4/Template"]
+        lines = out.splitlines()
+        assert lines[:4] == ["Delivery templates", "(no results)", "", "PDF templates"]
+        assert lines[4].split() == ["uid", "name", "type", "language", "country", "brand"]
+        assert "pdf-uid-cli-test" in lines[6]
+        assert "Invented-PDF-Template" in lines[6]
+        assert len(lines) == 7
+        assert "None" not in out
+
+    def test_json_holds_both_lists_in_one_object(self, monkeypatch, capsys):
+        code, out, _ = run_cli(["templates", "--json"], self.RESPONSE, monkeypatch, capsys)
+        assert code == 0
+        assert json.loads(out) == {
+            "templates": [],
+            "pdf_templates": [
+                {
+                    "uid": "pdf-uid-cli-test",
+                    "name": "Invented-PDF-Template",
+                    "type": "InventedType",
+                    "language": "xx",
+                    "country": None,
+                    "brand_name": "Invented Brand",
+                }
+            ],
+        }
 
 
 class TestTable:
