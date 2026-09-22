@@ -380,6 +380,12 @@ class TestAsyncUploads:
         assert [shape(c) for c in async_calls] == [shape(c) for c in sync_calls]
         assert async_calls[0].parts == sync_calls[0].parts
 
+    async def test_sends_application_octet_stream_when_no_content_type_is_given(self):
+        client, calls = make_async_client(MockResponse(status=201, json=UPLOADED))
+        async with client:
+            await client.uploads.create(file=b"%PDF-1.7", file_name="po.pdf")
+        assert [part.content_type for part in calls[0].parts or []] == ["application/octet-stream"]
+
     async def test_maps_a_201(self):
         client, _ = make_async_client(MockResponse(status=201, json=UPLOADED))
         async with client:
