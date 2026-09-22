@@ -48,7 +48,7 @@ class UploadResult:
         )
 
 
-def _read(file: Union[bytes, BinaryIO]) -> bytes:
+def _read(file: Union[bytes, bytearray, memoryview, BinaryIO]) -> bytes:
     """The file's content, read once and in full before anything is sent."""
     if isinstance(file, (bytes, bytearray, memoryview)):
         return bytes(file)
@@ -65,7 +65,9 @@ def _read(file: Union[bytes, BinaryIO]) -> bytes:
 
 
 def _operation(
-    file: Union[bytes, BinaryIO], file_name: str, content_type: Optional[str]
+    file: Union[bytes, bytearray, memoryview, BinaryIO],
+    file_name: str,
+    content_type: Optional[str],
 ) -> Operation:
     # Neither value is quoted: a file name can carry personal data.
     if not isinstance(file_name, str) or not file_name:
@@ -115,7 +117,7 @@ class UploadsResource(Resource):
     def create(
         self,
         *,
-        file: Union[bytes, BinaryIO],
+        file: Union[bytes, bytearray, memoryview, BinaryIO],
         file_name: str,
         content_type: Optional[str] = None,
     ) -> UploadResult:
@@ -149,7 +151,7 @@ class AsyncUploadsResource(AsyncResource):
     async def create(
         self,
         *,
-        file: Union[bytes, BinaryIO],
+        file: Union[bytes, bytearray, memoryview, BinaryIO],
         file_name: str,
         content_type: Optional[str] = None,
     ) -> UploadResult:
