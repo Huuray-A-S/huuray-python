@@ -19,11 +19,19 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+import httpx
 import pytest
 
 from huuray import AsyncHuurayClient, HuurayClient, Recipient
 
-from .helpers import CapturedRequest, MockResponse, make_async_client, make_client
+from .helpers import (
+    CapturedPart,
+    CapturedRequest,
+    MockResponse,
+    RecordingTransport,
+    make_async_client,
+    make_client,
+)
 
 SPEC_PATH = Path(__file__).resolve().parents[1] / "openapi" / "huuray-v4.json"
 SPEC: dict[str, Any] = json.loads(SPEC_PATH.read_text(encoding="utf-8"))
@@ -142,6 +150,128 @@ def validate(schema: dict[str, Any], value: Any, at: str = "$") -> list[str]:
     ]
 
 
+def validate_multipart(media: dict[str, Any], parts: list[CapturedPart], at: str) -> list[str]:
+    """Validate the parts of a ``multipart/form-data`` body against its media type.
+
+    Checks part NAMES against the schema's ``properties`` and ``required``, and
+    how each part is sent — never the bytes, which are the caller's file. FAILS
+    CLOSED like :func:`validate`: an encoding, schema or property shape it does
+    not understand is an error.
+    """
+    unknown = sorted(set(media) - {"schema", "encoding"})
+    if unknown:
+        return [
+            f"{at}: multipart media type has {unknown}, which this validator does not handle — "
+            "extend validate_multipart() before trusting this run"
+        ]
+    schema = deref(media.get("schema") or {})
+    if any(key in schema for key in ("allOf", "oneOf", "anyOf")):
+        return [
+            f"{at}: multipart schema uses allOf/oneOf/anyOf, which this validator does not "
+            "handle — extend validate_multipart() before trusting this run"
+        ]
+    properties = schema.get("properties")
+    if schema.get("type") != "object" or not isinstance(properties, dict):
+        return [
+            f"{at}: multipart schema is not an object with properties — this validator cannot "
+            "check it; extend validate_multipart() before trusting this run"
+        ]
+
+    for name, encoding in media.get("encoding", {}).items():
+        # style: form is the default for a form part and changes nothing on the
+        # wire. contentType, headers, explode and allowReserved all would.
+        if (
+            name not in properties
+            or set(encoding) - {"style"}
+            or encoding.get("style", "form") != "form"
+        ):
+            return [
+                f"{at}: multipart encoding {name!r} is {encoding!r}, which this validator does "
+                "not handle — extend validate_multipart() before trusting this run"
+            ]
+
+    errors: list[str] = []
+    names = [part.name for part in parts]
+    for name in names:
+        if name not in properties:
+            errors.append(
+                f"{at}.{name}: part not defined in the spec — "
+                "the SDK must not send undocumented fields"
+            )
+    for name in sorted(set(names)):
+        if names.count(name) > 1:
+            errors.append(f"{at}.{name}: sent {names.count(name)} times, but the spec defines one")
+    for required in schema.get("required", []):
+        if required not in names:
+            errors.append(f"{at}.{required}: required by the spec but not sent")
+
+    for part in parts:
+        if part.name not in properties:
+            continue
+        where = f"{at}.{part.name}"
+        prop = deref(properties[part.name])
+        kind, form = prop.get("type"), prop.get("format")
+        if any(key in prop for key in ("allOf", "oneOf", "anyOf")) or kind != "string":
+            errors.append(
+                f"{where}: multipart property is not a plain string schema — this validator "
+                "cannot check it; extend validate_multipart() before trusting this run"
+            )
+        elif form == "binary":
+            # A file: it must carry a filename and its own content type.
+            if not part.filename:
+                errors.append(f"{where}: binary part sent without a filename")
+            if not part.content_type:
+                errors.append(f"{where}: binary part sent without a Content-Type")
+        elif form is None:
+            if part.filename is not None:
+                errors.append(f"{where}: string part sent as a file, with a filename")
+        else:
+            errors.append(
+                f'{where}: multipart property has format "{form}" — this validator cannot '
+                "check it; extend validate_multipart() before trusting this run"
+            )
+    return errors
+
+
+def check_request(operation: dict[str, Any] | None, call: CapturedRequest) -> list[str]:
+    """Every violation in one captured request's body, against its spec operation.
+
+    Dispatches on the media types the operation declares. FAILS CLOSED on a media
+    type it does not handle, and never JSON-parses a multipart body.
+    """
+    at = f"{call.method} {call.path}"
+    if operation is None:
+        return [f"{at}: not an operation in the spec"]
+
+    content: dict[str, Any] = operation.get("requestBody", {}).get("content", {})
+    if not content:
+        # The spec declares no body for this operation, so the SDK must send none.
+        if not call.body_omitted:
+            return [f"{at}: spec declares no requestBody, but the SDK sent one"]
+        return []
+
+    unknown = sorted(set(content) - {"application/json", "multipart/form-data"})
+    if unknown:
+        return [
+            f"{at}: requestBody declares {unknown}, which this validator does not handle — "
+            "extend check_request() before trusting this run"
+        ]
+
+    if call.body_omitted:
+        if "multipart/form-data" in content:
+            return [f"{at}: spec declares a multipart/form-data body, but the SDK sent none"]
+        return validate(content["application/json"].get("schema") or {}, None, at)
+
+    if call.media_type not in content:
+        return [f"{at}: sent {call.media_type!r}, but the spec declares {sorted(content)}"]
+    if call.parse_error:
+        return [f"{at}: {call.parse_error}"]
+    media = content[call.media_type]
+    if call.media_type == "multipart/form-data":
+        return validate_multipart(media, call.parts or [], at)
+    return validate(media.get("schema") or {}, call.body, at)
+
+
 # --------------------------------------------------------------- the harness
 
 EXPIRES = datetime(2027, 1, 1, tzinfo=timezone.utc)
@@ -257,7 +387,7 @@ class TestNoInventionGate:
         for call in calls:
             if not call.query:
                 continue
-            operation = SPEC["paths"][call.path][call.method.lower()]
+            operation = SPEC["paths"].get(call.path, {}).get(call.method.lower(), {})
             declared = {
                 parameter["name"]
                 for parameter in operation.get("parameters", [])
@@ -287,28 +417,9 @@ class TestCoverageGate:
 class TestRequestConformanceGate:
     def test_every_request_body_validates_against_its_spec_schema(self, calls):
         failures: list[str] = []
-
         for call in calls:
-            operation = SPEC["paths"][call.path][call.method.lower()]
-            schema = (
-                operation.get("requestBody", {})
-                .get("content", {})
-                .get("application/json", {})
-                .get("schema")
-            )
-
-            if not schema:
-                # The spec declares no body for this operation, so the SDK must
-                # send none.
-                if not call.body_omitted:
-                    failures.append(
-                        f"{call.method} {call.path}: spec declares no requestBody, "
-                        "but the SDK sent one"
-                    )
-                continue
-
-            failures.extend(validate(schema, call.body, f"{call.method} {call.path}"))
-
+            operation = SPEC["paths"].get(call.path, {}).get(call.method.lower())
+            failures.extend(check_request(operation, call))
         assert failures == []
 
     def test_every_order_request_in_the_harness_carries_the_pdf_template_uid(self, calls):
@@ -415,9 +526,20 @@ class TestTheAsyncClientEmitsTheSameRequests:
             for coroutine in exercise_everything(async_client):
                 await coroutine
 
-        assert [(c.method, c.path, c.query, c.body) for c in sync_calls] == [
-            (c.method, c.path, c.query, c.body) for c in async_calls
-        ]
+        # A multipart body carries a random boundary, so the raw bytes are compared
+        # with it replaced; everything else must match byte for byte.
+        def shape(call: CapturedRequest) -> tuple[Any, ...]:
+            return (
+                call.method,
+                call.path,
+                call.query,
+                call.media_type,
+                call.body,
+                call.parts,
+                call.content_without_boundary(),
+            )
+
+        assert [shape(c) for c in sync_calls] == [shape(c) for c in async_calls]
 
 
 class TestTheGatesThemselvesWork:
@@ -456,3 +578,164 @@ class TestTheGatesThemselvesWork:
     def test_raises_on_an_unresolvable_ref_rather_than_passing_it(self):
         with pytest.raises(AssertionError, match="Unresolvable"):
             validate({"$ref": "#/components/schemas/NoSuchSchema"}, {})
+
+
+# ------------------------------------------------- multipart request bodies
+
+#: A multipart media type with one required file part, as Swashbuckle writes it.
+FILE_MEDIA: dict[str, Any] = {
+    "schema": {
+        "type": "object",
+        "properties": {"File": {"type": "string", "format": "binary"}},
+        "required": ["File"],
+    },
+    "encoding": {"File": {"style": "form"}},
+}
+
+
+def operation_with(media_type: str, media: dict[str, Any]) -> dict[str, Any]:
+    return {"requestBody": {"content": {media_type: media}}}
+
+
+def recorded(**request: Any) -> CapturedRequest:
+    """Run a hand-built POST through the recording transport, as a client would."""
+    built = httpx.Request("POST", "https://api.huuray.com/v4/Upload", **request)
+    built.read()
+    transport = RecordingTransport()
+    transport.handle_request(built)
+    return transport.calls[0]
+
+
+def a_file(name: str = "File", filename: Any = "po.pdf", content_type: Any = "application/pdf"):
+    return CapturedPart(name=name, filename=filename, content_type=content_type, data=b"%PDF")
+
+
+class TestTheMultipartGateWorks:
+    """The request-conformance gate on a ``multipart/form-data`` body, and its harness."""
+
+    def test_the_recorder_splits_a_multipart_body_and_never_json_parses_it(self):
+        call = recorded(files={"File": ("po.pdf", b"%PDF-1.7\r\n\x00\xff", "application/pdf")})
+        assert call.media_type == "multipart/form-data"
+        assert call.parse_error is None
+        assert call.body is None
+        assert call.body_omitted is False
+        assert call.parts == [
+            CapturedPart(
+                name="File",
+                filename="po.pdf",
+                content_type="application/pdf",
+                data=b"%PDF-1.7\r\n\x00\xff",
+            )
+        ]
+
+    def test_the_recorder_reports_an_unreadable_json_body_instead_of_raising(self):
+        call = recorded(content=b"not json", headers={"Content-Type": "application/json"})
+        assert call.parse_error is not None
+        errors = check_request(operation_with("application/json", {"schema": {}}), call)
+        assert any("not valid JSON" in error for error in errors)
+
+    def test_accepts_a_file_part_sent_as_the_spec_declares_it(self):
+        call = recorded(files={"File": ("po.pdf", b"%PDF", "application/pdf")})
+        assert check_request(operation_with("multipart/form-data", FILE_MEDIA), call) == []
+
+    def test_flags_an_undocumented_part(self):
+        errors = validate_multipart(FILE_MEDIA, [a_file(), a_file(name="Files")], "$")
+        assert any("Files" in error and "not defined in the spec" in error for error in errors)
+
+    def test_flags_a_missing_required_part(self):
+        errors = validate_multipart(FILE_MEDIA, [], "$")
+        assert any("File" in error and "required" in error for error in errors)
+
+    def test_flags_a_part_sent_twice(self):
+        errors = validate_multipart(FILE_MEDIA, [a_file(), a_file()], "$")
+        assert any("sent 2 times" in error for error in errors)
+
+    def test_flags_a_binary_part_sent_without_a_filename_or_content_type(self):
+        errors = validate_multipart(FILE_MEDIA, [a_file(filename=None, content_type=None)], "$")
+        assert any("without a filename" in error for error in errors)
+        assert any("without a Content-Type" in error for error in errors)
+
+    def test_flags_an_empty_filename(self):
+        errors = validate_multipart(FILE_MEDIA, [a_file(filename="")], "$")
+        assert any("without a filename" in error for error in errors)
+
+    def test_flags_a_plain_string_part_sent_as_a_file(self):
+        media = {"schema": {"type": "object", "properties": {"Note": {"type": "string"}}}}
+        errors = validate_multipart(media, [a_file(name="Note")], "$")
+        assert any("sent as a file" in error for error in errors)
+
+    @pytest.mark.parametrize(
+        "encoding",
+        [
+            {"style": "form", "explode": True},
+            {"style": "form", "allowReserved": True},
+            {"contentType": "application/pdf"},
+            {"headers": {"X-Extra": {"schema": {"type": "string"}}}},
+            {"style": "deepObject"},
+        ],
+    )
+    def test_fails_closed_on_an_encoding_it_does_not_understand(self, encoding):
+        media = {**FILE_MEDIA, "encoding": {"File": encoding}}
+        errors = validate_multipart(media, [a_file()], "$")
+        assert any("does not handle" in error for error in errors)
+
+    def test_fails_closed_on_an_encoding_for_a_part_the_schema_does_not_define(self):
+        media = {**FILE_MEDIA, "encoding": {"Other": {"style": "form"}}}
+        assert any("does not handle" in e for e in validate_multipart(media, [a_file()], "$"))
+
+    def test_fails_closed_on_a_composed_schema(self):
+        media = {"schema": {"allOf": [FILE_MEDIA["schema"]]}}
+        assert any("does not handle" in e for e in validate_multipart(media, [a_file()], "$"))
+
+    def test_fails_closed_on_a_schema_that_is_not_an_object_with_properties(self):
+        media = {"schema": {"type": "string", "format": "binary"}}
+        assert any("cannot check" in e for e in validate_multipart(media, [a_file()], "$"))
+
+    @pytest.mark.parametrize(
+        "prop",
+        [
+            {"type": "integer"},
+            {"type": "array", "items": {"type": "string", "format": "binary"}},
+            {"type": "string", "format": "byte"},
+            {"allOf": [{"type": "string", "format": "binary"}]},
+        ],
+    )
+    def test_fails_closed_on_a_part_schema_it_cannot_check(self, prop):
+        media = {"schema": {"type": "object", "properties": {"File": prop}}}
+        assert any("cannot check" in e for e in validate_multipart(media, [a_file()], "$"))
+
+    def test_fails_closed_on_a_media_type_key_it_does_not_understand(self):
+        media = {**FILE_MEDIA, "examples": {}}
+        assert any("does not handle" in e for e in validate_multipart(media, [a_file()], "$"))
+
+    def test_fails_closed_on_a_request_media_type_it_does_not_understand(self):
+        operation = operation_with("application/x-www-form-urlencoded", {"schema": {}})
+        errors = check_request(operation, recorded(data={"File": "x"}))
+        assert any("does not handle" in error for error in errors)
+
+    def test_flags_json_sent_where_the_spec_declares_multipart(self):
+        errors = check_request(
+            operation_with("multipart/form-data", FILE_MEDIA), recorded(json={"File": "x"})
+        )
+        assert any("sent 'application/json'" in error for error in errors)
+
+    def test_flags_multipart_sent_where_the_spec_declares_json(self):
+        order = SPEC["paths"]["/v4/Order"]["post"]
+        call = recorded(files={"File": ("po.pdf", b"%PDF", "application/pdf")})
+        assert any("sent 'multipart/form-data'" in error for error in check_request(order, call))
+
+    def test_flags_a_multipart_body_it_cannot_parse(self):
+        call = recorded(
+            content=b"not multipart at all",
+            headers={"Content-Type": "multipart/form-data; boundary=abc"},
+        )
+        errors = check_request(operation_with("multipart/form-data", FILE_MEDIA), call)
+        assert any("not valid multipart/form-data" in error for error in errors)
+
+    def test_flags_a_multipart_operation_called_without_a_body(self):
+        errors = check_request(operation_with("multipart/form-data", FILE_MEDIA), recorded())
+        assert any("sent none" in error for error in errors)
+
+    def test_an_operation_missing_from_the_spec_fails_as_an_assertion_not_a_key_error(self):
+        errors = check_request(None, recorded(json={}))
+        assert errors == ["POST /v4/Upload: not an operation in the spec"]
