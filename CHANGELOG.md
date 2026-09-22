@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `uploads.create(file=..., file_name=..., content_type=None)` on both clients —
+  `POST /v4/Upload`, sent as `multipart/form-data` with the file as the part `File`.
+  It returns an `UploadResult` (`token`, `file_name`, `content_type`, `size`); pass
+  `token` to an order as `purchase_order_file_token`. `file` is `bytes` or a binary
+  file object. Without `content_type` the part is sent as `application/octet-stream`.
+  The API, not this client, checks the file's size and type.
+- **Uploads are never retried**: each one stages a new file that counts towards the
+  account's pending uploads. A timeout, a dropped connection or an unreadable 2xx
+  raises the ordinary `HuurayTimeoutError` or `HuurayConnectionError`, saying the
+  upload may still have been stored and may hold a pending slot until it is used or
+  cleaned up.
+- `orders.create()`, `orders.create_sync()` and both `send_reward()` methods take the
+  optional `additional_reference`, `customer_reference`, `article_number`,
+  `description` and `purchase_order_file_token`, sent as `AdditionalReference`,
+  `CustomerReference`, `ArticleNumber`, `Description` and `PurchaseOrderFileToken`.
+  They are omitted when not given and sent as given otherwise; the API rejects one the
+  account has not enabled with a 422.
+- `FileName` and `CustomerReference` (and `file_name`, `customer_reference`) are in
+  `SENSITIVE_FIELDS`. `redact()` and `safe_json()` replace any bytes with their size,
+  e.g. `[48213 bytes]`, and `UploadResult` masks `file_name` in `repr()`.
+- The request-conformance gate validates a `multipart/form-data` body by its part
+  names, and that a binary part is sent as a file with a filename. It fails closed on
+  a multipart shape it does not understand.
+
 ### Confirmed against the live API
 
 Every assumption the specification left open has been verified with real calls

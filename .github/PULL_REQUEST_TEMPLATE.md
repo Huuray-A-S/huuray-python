@@ -33,7 +33,7 @@
 
 <!-- Delete if it does not. -->
 
-- [ ] Adds no automatic retry to `/v4/Order`, `/v4/Resend`, or `/v4/Cancel`
+- [ ] Adds no automatic retry to `/v4/Order`, `/v4/Resend`, `/v4/Cancel`, or `/v4/Upload`
 - [ ] Amounts stay integers in minor units
 - [ ] No transport failure can escape the error taxonomy, including on the body read
 - [ ] No voucher code can reach a log, a `repr()`, or an error message

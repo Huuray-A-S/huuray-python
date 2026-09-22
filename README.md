@@ -127,6 +127,32 @@ huuray.orders.create(
 )
 ```
 
+## Attaching a purchase order
+
+Upload the file first, then pass its token to the order:
+
+```python
+with open("purchase-order-4711.pdf", "rb") as file:  # or pass bytes
+    upload = huuray.uploads.create(
+        file=file,
+        file_name="purchase-order-4711.pdf",
+        content_type="application/pdf",  # optional: application/octet-stream if omitted
+    )
+
+huuray.orders.create(
+    ...,
+    purchase_order_file_token=upload.token,  # the order consumes it
+    additional_reference="PO-4711",
+    customer_reference="Jane Doe",
+    article_number="ART-1",
+    description="Ten gift cards for the sales team",
+)
+```
+
+The five order fields are optional on `orders.create()`, `orders.create_sync()` and `send_reward()`. Each is accepted only when the matching option is enabled for your account; otherwise the API rejects the order with a 422, raised as `HuurayValidationError`. They are sent exactly as given — the API checks them, as it checks the file (a PDF or an image of at most 10 MB), and this client does not.
+
+**An upload is never retried.** Each one stages a new file that counts towards your account's limit of pending uploads until an order uses it, and nothing can look up an upload whose answer was lost. A timeout or a dropped connection raises the ordinary `HuurayTimeoutError` or `HuurayConnectionError`, saying the file may still have been stored.
+
 ## Seven things worth knowing
 
 These are the parts of the API that are easy to get wrong. The client handles each one, but the behaviour is worth understanding.
@@ -246,7 +272,7 @@ HuurayClient(api_token=..., api_secret=..., hash_encoding="base64")
 
 ## API coverage
 
-All nine v4 operations, and nothing else. Every method maps to one operation in the [Swagger reference](https://api.huuray.com/swagger/index.html):
+All ten v4 operations, and nothing else. Every method maps to one operation in the [Swagger reference](https://api.huuray.com/swagger/index.html):
 
 | Method | Endpoint |
 |---|---|
@@ -261,6 +287,7 @@ All nine v4 operations, and nothing else. Every method maps to one operation in 
 | `orders.search(...)` | `POST /v4/Search` |
 | `orders.resend(...)` | `POST /v4/Resend` |
 | `orders.cancel(...)` | `DELETE /v4/Cancel` |
+| `uploads.create(file=..., file_name=...)` | `POST /v4/Upload` (`multipart/form-data`) |
 
 Every one of these exists on both clients, identically — `AsyncHuurayClient` differs only in that you await it.
 

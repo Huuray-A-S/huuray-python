@@ -72,7 +72,7 @@ When you add or change a method, change both classes. A parity test asserts the 
 
 Some of this library moves real money. Changes in these areas get closer review, and pull requests that weaken a guard will be asked to justify it:
 
-- **Never add automatic retries to `/v4/Order`, `/v4/Resend` or `/v4/Cancel`.** There is no idempotency key. A retried order orders twice; a retried resend re-delivers a live gift card. Retries are opt-in per operation and must never be inferred from the HTTP method — four read-only v4 endpoints are POSTs.
+- **Never add automatic retries to `/v4/Order`, `/v4/Resend`, `/v4/Cancel` or `/v4/Upload`.** There is no idempotency key. A retried order orders twice; a retried resend re-delivers a live gift card; a retried upload stages a second file. Retries are opt-in per operation and must never be inferred from the HTTP method — four read-only v4 endpoints are POSTs.
 - **Never let a transport failure escape the error taxonomy.** The response body read must stay inside the same handling as the request, or a mid-body drop bypasses `HuurayIndeterminateOrderError` entirely.
 - **Never coerce an unreadable 2xx into an empty result.** A garbled `/v4/Search` response reading as "no order found" would make the documented reconciliation flow re-order.
 - **Never widen the CLI to move value.** It is read-only on purpose.
