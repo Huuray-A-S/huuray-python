@@ -362,6 +362,11 @@ def exercise_everything(client: Any) -> Any:
         ),
         client.orders.resend(order_uid="uid", voucher_id=7),
         client.orders.cancel(order_uid="uid", voucher_id=7),
+        client.uploads.create(
+            file=b"%PDF-1.7 purchase order",
+            file_name="purchase-order-4711.pdf",
+            content_type="application/pdf",
+        ),
     ]
 
 
@@ -407,8 +412,8 @@ class TestCoverageGate:
         exercised = {f"{call.method.upper()} {call.path}" for call in calls}
         assert sorted(spec_operations() - exercised) == []
 
-    def test_covers_exactly_the_nine_v4_operations_no_more_no_fewer(self):
-        assert len(spec_operations()) == 9
+    def test_covers_exactly_the_ten_v4_operations_no_more_no_fewer(self):
+        assert len(spec_operations()) == 10
 
     def test_the_spec_is_still_v4_this_client_targets_v4_only(self):
         assert SPEC["info"]["version"] == "v4"
@@ -445,6 +450,15 @@ class TestRequestConformanceGate:
         }
         assert [{key: call.body.get(key) for key in wire} for call in orders] == [wire] * 3
 
+    def test_the_upload_in_the_harness_is_a_multipart_file_part_not_json(self, calls):
+        # The gate above validates the part names; this pins what it was given.
+        upload = next(call for call in calls if call.path == "/v4/Upload")
+        assert upload.media_type == "multipart/form-data"
+        assert upload.body is None
+        assert [(p.name, p.filename, p.content_type) for p in upload.parts or []] == [
+            ("File", "purchase-order-4711.pdf", "application/pdf")
+        ]
+
     def test_sends_no_body_to_post_v4_template_which_declares_none(self, calls):
         template_call = next(call for call in calls if call.path == "/v4/Template")
         assert template_call.body_omitted is True
@@ -472,6 +486,7 @@ class TestTheHarnessStaysLinkedToThePublicSurface:
             "search",
             "send_reward",
         ],
+        "UploadsResource": ["create"],
     }
 
     @staticmethod
@@ -483,6 +498,7 @@ class TestTheHarnessStaysLinkedToThePublicSurface:
             client.stock,
             client.exchange_rates,
             client.orders,
+            client.uploads,
         ]
         return {
             type(resource).__name__.removeprefix("Async"): sorted(

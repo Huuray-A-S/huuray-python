@@ -42,6 +42,10 @@ SENSITIVE_FIELDS: tuple[str, ...] = (
     "email",
     "Phone",
     "phone",
+    "FileName",
+    "file_name",
+    "CustomerReference",
+    "customer_reference",
 )
 
 _SECRET = frozenset(SECRET_FIELDS)
@@ -64,7 +68,8 @@ def redact(value: Any, depth: int = 0) -> Any:
     """Return a deep copy with secret and sensitive values replaced by markers.
 
     Handles mappings, sequences, and dataclass instances — so both raw response
-    bodies and the mapped result objects this SDK returns are covered.
+    bodies and the mapped result objects this SDK returns are covered. Bytes are
+    replaced by their size, so file content never reaches the output.
 
     Use it for anything human-facing. It is deliberately lossy: a redacted
     voucher code cannot be recovered from the output.
@@ -89,7 +94,13 @@ def redact(value: Any, depth: int = 0) -> Any:
                 out[key] = redact(item, depth + 1)
         return out
 
-    if isinstance(value, (str, bytes)):
+    # File content is never printed, only its size.
+    if isinstance(value, (bytes, bytearray)):
+        return f"[{len(value)} bytes]"
+    if isinstance(value, memoryview):
+        return f"[{value.nbytes} bytes]"
+
+    if isinstance(value, str):
         return value
 
     if isinstance(value, Sequence):

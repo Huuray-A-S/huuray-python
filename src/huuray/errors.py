@@ -39,8 +39,9 @@ class HuurayConnectionError(HuurayError):
 class HuurayTimeoutError(HuurayConnectionError):
     """The request exceeded the configured timeout."""
 
-    def __init__(self, method: str, path: str, timeout: float) -> None:
-        super().__init__(f"{method} {path} timed out after {timeout}s.", method, path)
+    def __init__(self, method: str, path: str, timeout: float, detail: str | None = None) -> None:
+        message = f"{method} {path} timed out after {timeout}s."
+        super().__init__(f"{message} {detail}" if detail else message, method, path)
         self.timeout = timeout
 
 

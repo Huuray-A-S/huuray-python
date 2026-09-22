@@ -85,3 +85,30 @@ class TestRedaction:
         assert redact(42) == 42
         assert redact("plain") == "plain"
         assert redact(None) is None
+
+    def test_replaces_bytes_with_their_size_file_content_is_never_printed(self):
+        content = b"%PDF-1.7 SECRET-CONTENT"
+        assert redact(content) == "[23 bytes]"
+        assert redact(bytearray(content)) == "[23 bytes]"
+        assert redact(memoryview(content)) == "[23 bytes]"
+        out = safe_json({"File": content, "Parts": [content]})
+        assert "SECRET-CONTENT" not in out
+        assert out == '{"File": "[23 bytes]", "Parts": ["[23 bytes]"]}'
+
+    def test_masks_file_names_and_customer_references_they_are_personal_data(self):
+        out = redact(
+            {
+                "FileName": "jane-doe-order.pdf",
+                "file_name": "jane-doe-order.pdf",
+                "CustomerReference": "Jane Doe",
+                "customer_reference": "Jane Doe",
+                "AdditionalReference": "PO-4711",
+            }
+        )
+        assert out == {
+            "FileName": "ja***df",
+            "file_name": "ja***df",
+            "CustomerReference": "Ja***oe",
+            "customer_reference": "Ja***oe",
+            "AdditionalReference": "PO-4711",
+        }

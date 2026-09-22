@@ -43,6 +43,7 @@ from .resources.orders import (
 )
 from .resources.stock import AsyncStockResource, StockResource
 from .resources.templates import AsyncTemplatesResource, TemplatesResource
+from .resources.uploads import AsyncUploadsResource, UploadsResource
 from .retry import DEFAULT_RETRY, RetryOptions, backoff_delay, is_retryable_status
 
 #: The production API. The specification declares no ``servers`` block, so the
@@ -79,6 +80,13 @@ _BAD_HOST_OR_PORT = "has an empty or invalid host, or a port that is not a numbe
 T = TypeVar("T")
 
 _UNREADABLE = object()
+
+
+def _with_note(message: str, op: Operation) -> str:
+    """``message``, followed by the operation's note on an unknown outcome if it has one."""
+    if not op.unknown_outcome_note:
+        return message
+    return f"{message.rstrip('.')}. {op.unknown_outcome_note}"
 
 
 @dataclass(frozen=True)
@@ -273,6 +281,12 @@ class _BaseClient:
             params=op.query or None,
             headers=headers,
             content=content,
+            # httpx writes a multipart body's Content-Type, boundary included, so
+            # none is set above for it: a boundary set by hand would not match.
+            files=[
+                (part.name, (part.file_name, part.content, part.content_type)) for part in op.files
+            ]
+            or None,
             # The timeout is attached to the request itself, not left to the
             # client to copy across. This SDK hands a pre-built Request to
             # Client.send(), and httpx only copies the client-level timeout onto
@@ -295,9 +309,9 @@ class _BaseClient:
         failures in ``HuurayIndeterminateOrderError``.
         """
         if isinstance(exc, httpx.TimeoutException):
-            return HuurayTimeoutError(op.method, op.path, self._timeout)
+            return HuurayTimeoutError(op.method, op.path, self._timeout, op.unknown_outcome_note)
         return HuurayConnectionError(
-            f"{op.method} {op.path} failed to reach the Huuray API: {exc}",
+            _with_note(f"{op.method} {op.path} failed to reach the Huuray API: {exc}", op),
             op.method,
             op.path,
         )
@@ -326,9 +340,12 @@ class _BaseClient:
             if parsed is _UNREADABLE:
                 shape = "not valid JSON" if text else "empty"
                 raise HuurayConnectionError(
-                    f"{op.method} {op.path} returned HTTP {status} but the body was "
-                    f"{shape} ({len(text)} bytes). Treat the outcome as unknown rather "
-                    "than empty.",
+                    _with_note(
+                        f"{op.method} {op.path} returned HTTP {status} but the body was "
+                        f"{shape} ({len(text)} bytes). Treat the outcome as unknown rather "
+                        "than empty.",
+                        op,
+                    ),
                     op.method,
                     op.path,
                 )
@@ -415,6 +432,7 @@ class HuurayClient(_BaseClient):
         self.stock = StockResource(self)
         self.exchange_rates = ExchangeRatesResource(self)
         self.orders = OrdersResource(self)
+        self.uploads = UploadsResource(self)
 
     # ---------------------------------------------------------- convenience
 
@@ -482,7 +500,8 @@ class HuurayClient(_BaseClient):
         reference; this method does no renaming.
 
         ``retryable`` defaults to ``False`` and must be opted into per call.
-        Never set it on ``/v4/Order``, ``/v4/Resend``, or ``/v4/Cancel``.
+        Never set it on ``/v4/Order``, ``/v4/Resend``, or ``/v4/Cancel``. The
+        body is always sent as JSON; use ``uploads.create()`` for ``/v4/Upload``.
 
         ``method`` must be an HTTP token such as ``GET``, and ``path`` must start
         with ``/`` and hold only visible ASCII; anything else raises ``ValueError``
@@ -595,6 +614,7 @@ class AsyncHuurayClient(_BaseClient):
         self.stock = AsyncStockResource(self)
         self.exchange_rates = AsyncExchangeRatesResource(self)
         self.orders = AsyncOrdersResource(self)
+        self.uploads = AsyncUploadsResource(self)
 
     # ---------------------------------------------------------- convenience
 

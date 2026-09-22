@@ -18,6 +18,8 @@ from dataclasses import dataclass, field
 from datetime import date, datetime
 from typing import TYPE_CHECKING, Any, Optional, Union
 
+from ..redact import _mask_partial
+
 if TYPE_CHECKING:  # pragma: no cover - import cycle only exists for type checkers
     from ..client import AsyncHuurayClient, HuurayClient
 
@@ -25,13 +27,36 @@ if TYPE_CHECKING:  # pragma: no cover - import cycle only exists for type checke
 DateTimeLike = Union[datetime, date, str]
 
 
+@dataclass(frozen=True, repr=False)
+class FilePart:
+    """One file in a ``multipart/form-data`` request body.
+
+    Its ``repr()`` shows the size, never the bytes, and masks the file name,
+    which can carry personal data — so an operation that reaches a log line or
+    a traceback carries neither the file nor its name.
+    """
+
+    #: The form field name, spelled as in the specification.
+    name: str
+    file_name: str
+    content: bytes
+    content_type: str
+
+    def __repr__(self) -> str:
+        return (
+            f"FilePart(name={self.name!r}, file_name={_mask_partial(self.file_name)!r}, "
+            f"content=[{len(self.content)} bytes], content_type={self.content_type!r})"
+        )
+
+
 @dataclass(frozen=True)
 class Operation:
     """One HTTP call, fully described before anything is sent.
 
-    ``body`` of ``None`` means *no request body at all* — distinct from an empty
-    object. ``POST /v4/Template`` declares no ``requestBody`` in the
-    specification, so the SDK sends none.
+    ``body`` of ``None`` means *no JSON body* — distinct from an empty object.
+    ``POST /v4/Template`` declares no ``requestBody`` in the specification, so
+    the SDK sends none. ``files``, when set, is sent as a ``multipart/form-data``
+    body instead.
     """
 
     method: str
@@ -42,6 +67,11 @@ class Operation:
     #: inferred from the HTTP method, because four read-only v4 endpoints are
     #: POSTs and two value-moving ones are too.
     retryable: bool = False
+    files: tuple[FilePart, ...] = ()
+    #: Appended to the message of a timeout, a connection failure or an
+    #: unreadable 2xx body: the cases where the call may have taken effect
+    #: although no answer arrived.
+    unknown_outcome_note: Optional[str] = None
 
 
 class Resource:

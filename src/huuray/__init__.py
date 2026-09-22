@@ -64,6 +64,7 @@ from .resources.orders import (
 )
 from .resources.stock import CheckStockResult
 from .resources.templates import ListTemplatesResult, PdfTemplate, Template
+from .resources.uploads import UploadResult
 from .retry import DEFAULT_RETRY, RetryOptions
 
 __all__ = [
@@ -107,6 +108,7 @@ __all__ = [
     "RetryOptions",
     "SearchOrdersResult",
     "Template",
+    "UploadResult",
     "Voucher",
     "__version__",
     "build_auth_headers",

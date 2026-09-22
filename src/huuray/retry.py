@@ -10,7 +10,7 @@ HTTP method. Each resource method declares whether it is safe to repeat:
 
 ===========  ================================================================
 retryable    Balance, ExchangeRates, Catalogue, Template, Stock, Search
-never        Order, Resend, Cancel
+never        Order, Resend, Cancel, Upload
 ===========  ================================================================
 
 Note that four of the retryable operations are POSTs. They are POSTs because
