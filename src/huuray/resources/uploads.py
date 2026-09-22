@@ -131,9 +131,10 @@ class UploadsResource(Resource):
         order consumes it.
 
         **Never retried.** Each upload stages a new file, holding one of your
-        account's pending upload slots until an order uses it, and there is no
-        call to find an upload whose answer was lost. A timeout or a dropped
-        connection raises :class:`~huuray.HuurayTimeoutError` or
+        account's pending upload slots until an order uses its token or the
+        upload is cleaned up, and there is no call to find an upload whose
+        answer was lost. A timeout or a dropped connection raises
+        :class:`~huuray.HuurayTimeoutError` or
         :class:`~huuray.HuurayConnectionError`, saying the upload may still have
         been stored.
 

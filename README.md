@@ -151,7 +151,7 @@ huuray.orders.create(
 
 The five order fields are optional on `orders.create()`, `orders.create_sync()` and `send_reward()`. Each is accepted only when the matching option is enabled for your account; otherwise the API rejects the order with a 422, raised as `HuurayValidationError`. They are sent exactly as given — the API checks them, as it checks the file (a PDF or an image of at most 10 MB), and this client does not.
 
-**An upload is never retried.** Each one stages a new file that counts towards your account's limit of pending uploads until an order uses it, and nothing can look up an upload whose answer was lost. A timeout or a dropped connection raises the ordinary `HuurayTimeoutError` or `HuurayConnectionError`, saying the file may still have been stored.
+**An upload is never retried.** Each one stages a new file that counts towards your account's limit of pending uploads until an order uses its token or the upload is cleaned up, and nothing can look up an upload whose answer was lost. A timeout or a dropped connection raises the ordinary `HuurayTimeoutError` or `HuurayConnectionError`, saying the file may still have been stored.
 
 ## Seven things worth knowing
 
