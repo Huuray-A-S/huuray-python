@@ -347,6 +347,99 @@ class TestPdfTemplateDelivery:
         assert calls[0].body["DeliveryPDFTemplateUid"] == "pdf-uid-test-1"
 
 
+#: The five optional invoice fields, keyword -> wire key, with a value for each.
+INVOICE_FIELDS: dict[str, tuple[str, str]] = {
+    "additional_reference": ("AdditionalReference", "PO-4711"),
+    "customer_reference": ("CustomerReference", "Jane Doe"),
+    "article_number": ("ArticleNumber", "ART-1"),
+    "description": ("Description", "Ten gift cards for the sales team"),
+    "purchase_order_file_token": (
+        "PurchaseOrderFileToken",
+        "60050460-7a2d-42a8-a4dd-5cef88ad8374",
+    ),
+}
+
+INVOICE_KWARGS: dict[str, Any] = {name: value for name, (_, value) in INVOICE_FIELDS.items()}
+INVOICE_WIRE: dict[str, Any] = dict(INVOICE_FIELDS.values())
+
+REWARD: dict[str, Any] = {
+    "product_token": "tok",
+    "value": 5000,
+    "currency": "DKK",
+    "recipient": Recipient(email="jane@example.com"),
+    "template_id": 42,
+    "ref_id": "r-1",
+}
+
+
+def invoice_part(body: dict[str, Any]) -> dict[str, Any]:
+    return {key: body[key] for key in INVOICE_WIRE if key in body}
+
+
+class TestInvoiceFields:
+    """The five optional order fields added for invoicing and purchase orders."""
+
+    @pytest.mark.parametrize(("name", "wire"), list(INVOICE_FIELDS.items()))
+    @pytest.mark.parametrize("method", ["create", "create_sync"])
+    def test_each_field_goes_out_under_its_spec_name(self, method, name, wire):
+        key, value = wire
+        client, calls = make_client(MockResponse(json={"OrderUID": "x"}))
+        getattr(client.orders, method)(**BASE, **{name: value})
+        assert invoice_part(calls[0].body) == {key: value}
+
+    @pytest.mark.parametrize("method", ["create", "create_sync"])
+    def test_all_five_together(self, method):
+        client, calls = make_client(MockResponse(json={"OrderUID": "x"}))
+        getattr(client.orders, method)(**BASE, **INVOICE_KWARGS)
+        assert invoice_part(calls[0].body) == INVOICE_WIRE
+
+    def test_both_send_rewards_pass_them_through(self):
+        client, calls = make_client(MockResponse(json={"OrderUID": "x"}))
+        client.orders.send_reward(**REWARD, **INVOICE_KWARGS)
+        client.send_reward(**REWARD, **INVOICE_KWARGS)
+        assert [invoice_part(call.body) for call in calls] == [INVOICE_WIRE] * 2
+
+    def test_every_order_method_omits_them_entirely_when_not_supplied(self):
+        client, calls = make_client(MockResponse(json={"OrderUID": "x"}))
+        client.orders.create(**BASE)
+        client.orders.create_sync(**BASE)
+        client.orders.send_reward(**REWARD)
+        client.send_reward(**REWARD)
+        assert len(calls) == 4
+        assert [invoice_part(call.body) for call in calls] == [{}] * 4
+
+    @pytest.mark.parametrize(
+        "value",
+        [
+            # The API enforces a length, rejects a script tag, and parses the token
+            # as a GUID. None of that is checked here: the server decides.
+            "x" * 300,
+            "<script>alert(1)</script>",
+            "not-a-guid",
+            "",
+            "  padded  ",
+            "Æblegrød & ünïcode",
+        ],
+    )
+    def test_sends_each_value_verbatim_without_checking_it(self, value):
+        client, calls = make_client(MockResponse(json={"OrderUID": "x"}))
+        client.orders.create(**BASE, **dict.fromkeys(INVOICE_FIELDS, value))
+        assert invoice_part(calls[0].body) == dict.fromkeys(INVOICE_WIRE, value)
+
+    def test_a_422_for_a_field_the_account_has_not_enabled_is_not_masked(self):
+        client, _ = make_client(
+            MockResponse(
+                status=422,
+                json={
+                    "Status": 422,
+                    "StatusMessage": "The account does not accept a customer reference",
+                },
+            )
+        )
+        with pytest.raises(HuurayValidationError, match="customer reference"):
+            client.orders.create(**BASE, customer_reference="Jane Doe")
+
+
 class TestIndeterminateOrders:
     def test_raises_when_the_connection_drops(self):
         client, _ = make_client(MockResponse(raises=httpx.ConnectError("socket hang up")))
@@ -632,6 +725,24 @@ class TestAsyncOrders:
         assert len(calls) == 2
         assert [call.body["Recipients"] for call in calls] == [[{"Phone": "+4500000000"}]] * 2
         assert [call.body["DeliveryPDFTemplateUid"] for call in calls] == ["pdf-uid-test-1"] * 2
+
+    async def test_every_order_method_sends_the_invoice_fields(self):
+        client, calls = make_async_client(MockResponse(json={"OrderUID": "x"}))
+        async with client:
+            await client.orders.create(**BASE, **INVOICE_KWARGS)
+            await client.orders.create_sync(**BASE, **INVOICE_KWARGS)
+            await client.orders.send_reward(**REWARD, **INVOICE_KWARGS)
+            await client.send_reward(**REWARD, **INVOICE_KWARGS)
+        assert [invoice_part(call.body) for call in calls] == [INVOICE_WIRE] * 4
+
+    async def test_every_order_method_omits_the_invoice_fields_when_not_supplied(self):
+        client, calls = make_async_client(MockResponse(json={"OrderUID": "x"}))
+        async with client:
+            await client.orders.create(**BASE)
+            await client.orders.create_sync(**BASE)
+            await client.orders.send_reward(**REWARD)
+            await client.send_reward(**REWARD)
+        assert [invoice_part(call.body) for call in calls] == [{}] * 4
 
     async def test_send_reward_requires_a_ref_id(self):
         client, calls = make_async_client()

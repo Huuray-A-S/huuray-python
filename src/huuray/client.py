@@ -431,6 +431,11 @@ class HuurayClient(_BaseClient):
         delivery_datetime: Any = None,
         personal_message: Optional[str] = None,
         pdf_template_uid: Optional[str] = None,
+        additional_reference: Optional[str] = None,
+        customer_reference: Optional[str] = None,
+        article_number: Optional[str] = None,
+        description: Optional[str] = None,
+        purchase_order_file_token: Optional[str] = None,
     ) -> CreateOrderResult:
         """Send one gift card to one recipient — the common case, in one call.
 
@@ -454,6 +459,11 @@ class HuurayClient(_BaseClient):
             delivery_datetime=delivery_datetime,
             personal_message=personal_message,
             pdf_template_uid=pdf_template_uid,
+            additional_reference=additional_reference,
+            customer_reference=customer_reference,
+            article_number=article_number,
+            description=description,
+            purchase_order_file_token=purchase_order_file_token,
         )
 
     def request(
@@ -601,6 +611,11 @@ class AsyncHuurayClient(_BaseClient):
         delivery_datetime: Any = None,
         personal_message: Optional[str] = None,
         pdf_template_uid: Optional[str] = None,
+        additional_reference: Optional[str] = None,
+        customer_reference: Optional[str] = None,
+        article_number: Optional[str] = None,
+        description: Optional[str] = None,
+        purchase_order_file_token: Optional[str] = None,
     ) -> CreateOrderResult:
         """Send one gift card to one recipient. See :meth:`HuurayClient.send_reward`."""
         return await self.orders.send_reward(
@@ -614,6 +629,11 @@ class AsyncHuurayClient(_BaseClient):
             delivery_datetime=delivery_datetime,
             personal_message=personal_message,
             pdf_template_uid=pdf_template_uid,
+            additional_reference=additional_reference,
+            customer_reference=customer_reference,
+            article_number=article_number,
+            description=description,
+            purchase_order_file_token=purchase_order_file_token,
         )
 
     async def request(

@@ -175,6 +175,11 @@ def _order_operation(
     delivery_datetime: Optional[DateTimeLike],
     personal_message: Optional[str],
     recipients: Optional[Sequence[Recipient]],
+    additional_reference: Optional[str],
+    customer_reference: Optional[str],
+    article_number: Optional[str],
+    description: Optional[str],
+    purchase_order_file_token: Optional[str],
 ) -> Operation:
     """Validate an order and describe the single request it becomes."""
     require_minor_units(value)
@@ -228,6 +233,13 @@ def _order_operation(
             "Recipients": (
                 [_to_wire_recipient(r) for r in recipients] if recipients is not None else None
             ),
+            # Sent exactly as given. Length, content and token format are the API's
+            # to judge, and it also rejects a field the account has not enabled.
+            "AdditionalReference": additional_reference,
+            "CustomerReference": customer_reference,
+            "ArticleNumber": article_number,
+            "Description": description,
+            "PurchaseOrderFileToken": purchase_order_file_token,
         }
     )
     # retryable is False and must stay False: /v4/Order has no idempotency key.
@@ -364,6 +376,11 @@ class OrdersResource(Resource):
         delivery_datetime: Optional[DateTimeLike] = None,
         personal_message: Optional[str] = None,
         recipients: Optional[Sequence[Recipient]] = None,
+        additional_reference: Optional[str] = None,
+        customer_reference: Optional[str] = None,
+        article_number: Optional[str] = None,
+        description: Optional[str] = None,
+        purchase_order_file_token: Optional[str] = None,
     ) -> CreateOrderResult:
         """Place an order and return immediately.
 
@@ -395,6 +412,17 @@ class OrdersResource(Resource):
             ``HuurayValidationError``. This client does not pre-check that.
         :param recipients: Required when ``template_id`` is set. The count must
             be either 1 or exactly ``quantity``.
+        :param additional_reference: Shown on the invoice.
+        :param customer_reference: Used as the customer contact on the invoice.
+        :param article_number: Shown on the invoice line.
+        :param description: Shown on the invoice line.
+        :param purchase_order_file_token: The ``token`` from ``uploads.create()``,
+            attaching that file to the invoice. The order consumes the token.
+
+        The last five are optional, and each is accepted only when the matching
+        option is enabled for your account; otherwise the API rejects the order
+        with a 422, raised as ``HuurayValidationError``. They are sent exactly as
+        given: the API, not this client, checks their content.
         """
         op = _order_operation(
             product_token=product_token,
@@ -409,6 +437,11 @@ class OrdersResource(Resource):
             delivery_datetime=delivery_datetime,
             personal_message=personal_message,
             recipients=recipients,
+            additional_reference=additional_reference,
+            customer_reference=customer_reference,
+            article_number=article_number,
+            description=description,
+            purchase_order_file_token=purchase_order_file_token,
         )
         return _map_create(self._post_order(op, ref_id))
 
@@ -426,6 +459,11 @@ class OrdersResource(Resource):
         delivery_datetime: Optional[DateTimeLike] = None,
         personal_message: Optional[str] = None,
         recipients: Optional[Sequence[Recipient]] = None,
+        additional_reference: Optional[str] = None,
+        customer_reference: Optional[str] = None,
+        article_number: Optional[str] = None,
+        description: Optional[str] = None,
+        purchase_order_file_token: Optional[str] = None,
     ) -> CreateSyncOrderResult:
         """Place an order and wait for the vouchers.
 
@@ -450,6 +488,11 @@ class OrdersResource(Resource):
             delivery_datetime=delivery_datetime,
             personal_message=personal_message,
             recipients=recipients,
+            additional_reference=additional_reference,
+            customer_reference=customer_reference,
+            article_number=article_number,
+            description=description,
+            purchase_order_file_token=purchase_order_file_token,
         )
         return _map_create_sync(self._post_order(op, ref_id))
 
@@ -466,6 +509,11 @@ class OrdersResource(Resource):
         delivery_datetime: Optional[DateTimeLike] = None,
         personal_message: Optional[str] = None,
         pdf_template_uid: Optional[str] = None,
+        additional_reference: Optional[str] = None,
+        customer_reference: Optional[str] = None,
+        article_number: Optional[str] = None,
+        description: Optional[str] = None,
+        purchase_order_file_token: Optional[str] = None,
     ) -> CreateOrderResult:
         """Send one gift card to one recipient — the common case, in one call.
 
@@ -475,6 +523,9 @@ class OrdersResource(Resource):
         ``ref_id`` is required here even though the API treats it as optional,
         and is never generated for you: a generated key is not in your system,
         so it could not be used to reconcile an order whose outcome is unknown.
+
+        The five optional invoice fields, ``additional_reference`` through
+        ``purchase_order_file_token``, are as described on :meth:`create`.
         """
         return self.create(
             product_token=product_token,
@@ -488,6 +539,11 @@ class OrdersResource(Resource):
             expires=expires,
             delivery_datetime=delivery_datetime,
             personal_message=personal_message,
+            additional_reference=additional_reference,
+            customer_reference=customer_reference,
+            article_number=article_number,
+            description=description,
+            purchase_order_file_token=purchase_order_file_token,
         )
 
     def search(
@@ -594,6 +650,11 @@ class AsyncOrdersResource(AsyncResource):
         delivery_datetime: Optional[DateTimeLike] = None,
         personal_message: Optional[str] = None,
         recipients: Optional[Sequence[Recipient]] = None,
+        additional_reference: Optional[str] = None,
+        customer_reference: Optional[str] = None,
+        article_number: Optional[str] = None,
+        description: Optional[str] = None,
+        purchase_order_file_token: Optional[str] = None,
     ) -> CreateOrderResult:
         """Place an order and return immediately. See :meth:`OrdersResource.create`."""
         op = _order_operation(
@@ -609,6 +670,11 @@ class AsyncOrdersResource(AsyncResource):
             delivery_datetime=delivery_datetime,
             personal_message=personal_message,
             recipients=recipients,
+            additional_reference=additional_reference,
+            customer_reference=customer_reference,
+            article_number=article_number,
+            description=description,
+            purchase_order_file_token=purchase_order_file_token,
         )
         return _map_create(await self._post_order(op, ref_id))
 
@@ -626,6 +692,11 @@ class AsyncOrdersResource(AsyncResource):
         delivery_datetime: Optional[DateTimeLike] = None,
         personal_message: Optional[str] = None,
         recipients: Optional[Sequence[Recipient]] = None,
+        additional_reference: Optional[str] = None,
+        customer_reference: Optional[str] = None,
+        article_number: Optional[str] = None,
+        description: Optional[str] = None,
+        purchase_order_file_token: Optional[str] = None,
     ) -> CreateSyncOrderResult:
         """Place an order and wait for the vouchers. See :meth:`OrdersResource.create_sync`."""
         op = _order_operation(
@@ -641,6 +712,11 @@ class AsyncOrdersResource(AsyncResource):
             delivery_datetime=delivery_datetime,
             personal_message=personal_message,
             recipients=recipients,
+            additional_reference=additional_reference,
+            customer_reference=customer_reference,
+            article_number=article_number,
+            description=description,
+            purchase_order_file_token=purchase_order_file_token,
         )
         return _map_create_sync(await self._post_order(op, ref_id))
 
@@ -657,6 +733,11 @@ class AsyncOrdersResource(AsyncResource):
         delivery_datetime: Optional[DateTimeLike] = None,
         personal_message: Optional[str] = None,
         pdf_template_uid: Optional[str] = None,
+        additional_reference: Optional[str] = None,
+        customer_reference: Optional[str] = None,
+        article_number: Optional[str] = None,
+        description: Optional[str] = None,
+        purchase_order_file_token: Optional[str] = None,
     ) -> CreateOrderResult:
         """Send one gift card to one recipient. See :meth:`OrdersResource.send_reward`."""
         return await self.create(
@@ -671,6 +752,11 @@ class AsyncOrdersResource(AsyncResource):
             expires=expires,
             delivery_datetime=delivery_datetime,
             personal_message=personal_message,
+            additional_reference=additional_reference,
+            customer_reference=customer_reference,
+            article_number=article_number,
+            description=description,
+            purchase_order_file_token=purchase_order_file_token,
         )
 
     async def search(

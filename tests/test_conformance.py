@@ -147,6 +147,15 @@ def validate(schema: dict[str, Any], value: Any, at: str = "$") -> list[str]:
 EXPIRES = datetime(2027, 1, 1, tzinfo=timezone.utc)
 DELIVER_AT = datetime(2026, 9, 1, 9, 0, tzinfo=timezone.utc)
 
+#: The optional invoice fields, populated on every order call in the harness.
+INVOICE_FIELDS: dict[str, str] = {
+    "additional_reference": "PO-4711",
+    "customer_reference": "Jane Doe",
+    "article_number": "ART-1",
+    "description": "Ten gift cards for the sales team",
+    "purchase_order_file_token": "60050460-7a2d-42a8-a4dd-5cef88ad8374",
+}
+
 
 def exercise_everything(client: Any) -> Any:
     """Call every public SDK method once, with every optional parameter populated.
@@ -179,6 +188,7 @@ def exercise_everything(client: Any) -> Any:
                 Recipient(name="A", email="a@example.com", ref_id="r-a"),
                 Recipient(name="B", phone="+4512345678", ref_id="r-b"),
             ],
+            **INVOICE_FIELDS,
         ),
         client.orders.create_sync(
             product_token="tok",
@@ -192,6 +202,7 @@ def exercise_everything(client: Any) -> Any:
             delivery_datetime=DELIVER_AT,
             personal_message="Thanks",
             recipients=[Recipient(name="C", email="c@example.com", ref_id="r-c")],
+            **INVOICE_FIELDS,
         ),
         client.orders.send_reward(
             product_token="tok",
@@ -204,6 +215,7 @@ def exercise_everything(client: Any) -> Any:
             expires="2027-01-01T00:00:00Z",
             delivery_datetime="2026-09-01T09:00:00Z",
             pdf_template_uid="pdf-template-uid-1",
+            **INVOICE_FIELDS,
         ),
         client.orders.search(
             order_uid="uid",
@@ -308,6 +320,19 @@ class TestRequestConformanceGate:
         assert [call.body.get("DeliveryPDFTemplateUid") for call in orders] == [
             "pdf-template-uid-1"
         ] * 3
+
+    def test_every_order_request_in_the_harness_carries_the_invoice_fields(self, calls):
+        # The same pin for the five optional invoice fields: each is sent by all
+        # three order calls, so its name and type are checked against OrderRequest.
+        orders = [call for call in calls if call.path == "/v4/Order"]
+        wire = {
+            "AdditionalReference": "PO-4711",
+            "CustomerReference": "Jane Doe",
+            "ArticleNumber": "ART-1",
+            "Description": "Ten gift cards for the sales team",
+            "PurchaseOrderFileToken": "60050460-7a2d-42a8-a4dd-5cef88ad8374",
+        }
+        assert [{key: call.body.get(key) for key in wire} for call in orders] == [wire] * 3
 
     def test_sends_no_body_to_post_v4_template_which_declares_none(self, calls):
         template_call = next(call for call in calls if call.path == "/v4/Template")
