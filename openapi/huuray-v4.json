@@ -418,7 +418,7 @@
           "Order"
         ],
         "summary": "Used to order giftcards",
-        "description": "The giftcards will be sent out as redeemable links. They will be sent out automatically via Email or SMS, or returned in a callback if you have set one up and enabled this feature. When delivering via Email, a PDF template from the Template endpoint can optionally be attached to each email as a document (DeliveryPDFTemplateUid). The PDF template must be available for the ordered product's brand and country, otherwise the order is rejected with a 422",
+        "description": "The giftcards will be sent out as redeemable links. They will be sent out automatically via Email or SMS, or returned in a callback if you have set one up and enabled this feature. When delivering via Email, a PDF template from the Template endpoint can optionally be attached to each email as a document (DeliveryPDFTemplateUid). The PDF template must be available for the ordered product's brand and country, otherwise the order is rejected with a 422. AdditionalReference, CustomerReference, ArticleNumber, Description and PurchaseOrderFileToken (a token from the Upload endpoint) mirror the fields of the B2B send pages and are only accepted when the corresponding option is enabled for your account, otherwise the order is rejected with a 422",
         "parameters": [
           {
             "name": "X-API-NONCE",
@@ -957,6 +957,107 @@
           }
         ]
       }
+    },
+    "/v4/Upload": {
+      "post": {
+        "tags": [
+          "Upload"
+        ],
+        "summary": "Used to upload a purchase order file for a later Order request",
+        "description": "Uploads a single file and returns a token. Pass the token as PurchaseOrderFileToken on the Order endpoint to attach the file to the invoice of that order, the same way the Purchase Order Files field on the B2B send pages works. One order takes one file. The file must be a PDF or an image (images are converted to PDF) of at most 10 MB. Purchase Order upload must be enabled for your account, otherwise the upload is rejected with a 422. At most 5 uploads can be pending (uploaded but not yet used by an order) per account; a token is consumed by the order it is used with, and unused uploads are removed after 48 hours",
+        "parameters": [
+          {
+            "name": "X-API-NONCE",
+            "in": "header",
+            "description": "A random value that can only be used once every 60 days. (max 50 characters)<br /><small>(this prevents your message from being re-transmitted, and thereby also replay attacks)</small>",
+            "required": true
+          },
+          {
+            "name": "X-API-HASH",
+            "in": "header",
+            "description": "The SHA512 hash of a concatenated string containing the following: ( API-SECRET + NONCE ).<br /><small>(this is used to authenticate you)</small>",
+            "required": true
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "File": {
+                    "type": "string",
+                    "description": "The file to upload. A purchase order file must be a PDF or an image (bmp, gif, jpeg, png, tiff, webp; not svg) of at most 10 MB",
+                    "format": "binary"
+                  }
+                }
+              },
+              "encoding": {
+                "File": {
+                  "style": "form"
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UploadResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Response"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Response"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Content",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Response"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Response"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "ApiToken": []
+          }
+        ]
+      }
     }
   },
   "components": {
@@ -1369,6 +1470,31 @@
               "$ref": "#/components/schemas/OrderRecipient"
             },
             "description": "A list of all the recipients. It is required unless DeliveryTemplateId is null. If specified, the count must be either 1 or match Product.Quantity",
+            "nullable": true
+          },
+          "AdditionalReference": {
+            "type": "string",
+            "description": "An optional additional reference for the order, shown on the invoice (max 250 characters). Only accepted when Additional Reference is enabled for your account (otherwise 422)",
+            "nullable": true
+          },
+          "CustomerReference": {
+            "type": "string",
+            "description": "An optional customer reference for the order, used as the customer contact on the invoice (max 250 characters). Only accepted when Customer Reference is enabled for your account (otherwise 422)",
+            "nullable": true
+          },
+          "ArticleNumber": {
+            "type": "string",
+            "description": "An optional article number for the order, shown on the invoice line (max 250 characters). Only accepted when Article Number is enabled for your account (otherwise 422)",
+            "nullable": true
+          },
+          "Description": {
+            "type": "string",
+            "description": "An optional description for the order, shown on the invoice line (max 250 characters). Only accepted when Description is enabled for your account (otherwise 422)",
+            "nullable": true
+          },
+          "PurchaseOrderFileToken": {
+            "type": "string",
+            "description": "An optional purchase order file to attach to the invoice, given as the token returned by the Upload endpoint. Only accepted when Purchase Order upload is enabled for your account (otherwise 422). The token is consumed by the order it is used with",
             "nullable": true
           }
         },
@@ -1878,6 +2004,51 @@
         },
         "additionalProperties": false,
         "description": "The response containing available templates"
+      },
+      "UploadResponse": {
+        "title": "Upload Response",
+        "type": "object",
+        "properties": {
+          "Token": {
+            "type": "string",
+            "description": "The token identifying the uploaded file. Pass it as PurchaseOrderFileToken on the Order endpoint. The token is consumed by the order it is used with",
+            "nullable": true
+          },
+          "FileName": {
+            "type": "string",
+            "description": "The file name the upload was stored with",
+            "nullable": true
+          },
+          "ContentType": {
+            "type": "string",
+            "description": "The content type the file was recognized as",
+            "nullable": true
+          },
+          "Size": {
+            "type": "integer",
+            "description": "The size of the uploaded file in bytes",
+            "format": "int64",
+            "nullable": true
+          },
+          "Status": {
+            "type": "integer",
+            "description": "HttpStatus code for the response",
+            "format": "int32"
+          },
+          "Message": {
+            "type": "string",
+            "description": "Deprecated, use StatusMessage instead. Error message describing an error that occurred during the processing of the request",
+            "nullable": true,
+            "deprecated": true
+          },
+          "StatusMessage": {
+            "type": "string",
+            "description": "Status message describing an error that occurred during the processing of the request",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "The response from the Upload request"
       }
     },
     "securitySchemes": {
