@@ -774,5 +774,6 @@ class TestNothingDumpsTheContent:
         raw = client._send(op)
         assert "LEAKED" not in repr(raw)
         assert b64(self.CONTENT) not in repr(raw)
-        assert "Retry-After" not in repr(raw)
+        # httpx stores header names in lower case, so the check ignores case.
+        assert "retry-after" not in repr(raw).lower()
         assert raw.headers["retry-after"] == "1"
