@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from huuray import Recipient, Voucher, redact, safe_json
+from huuray import SECRET_FIELDS, Recipient, Voucher, redact, safe_json
 
 
 class TestRedaction:
@@ -94,6 +94,24 @@ class TestRedaction:
         out = safe_json({"File": content, "Parts": [content]})
         assert "SECRET-CONTENT" not in out
         assert out == '{"File": "[23 bytes]", "Parts": ["[23 bytes]"]}'
+
+    def test_redacts_a_pdfs_content_it_shows_the_redeemable_code(self):
+        # The base64 wire value is a bearer value like a code; decoded bytes
+        # under the same key show only their size.
+        out = redact(
+            {
+                "Documents": [{"VoucherIDs": [1], "Content": "JVBERi0xLjcKU0VDUkVU"}],
+                "documents": [{"voucher_ids": [1], "content": b"%PDF-1.7 SECRET"}],
+                "content": "JVBERi0xLjcKU0VDUkVU",
+            }
+        )
+        assert out == {
+            "Documents": [{"VoucherIDs": [1], "Content": "[redacted: bearer value]"}],
+            "documents": [{"voucher_ids": [1], "content": "[15 bytes]"}],
+            "content": "[redacted: bearer value]",
+        }
+        assert "Content" in SECRET_FIELDS
+        assert "content" in SECRET_FIELDS
 
     def test_masks_file_names_and_customer_references_they_are_personal_data(self):
         out = redact(

@@ -62,6 +62,7 @@ from .resources.orders import (
     SearchOrdersResult,
     Voucher,
 )
+from .resources.pdfs import PdfDocument, PdfResult
 from .resources.stock import CheckStockResult
 from .resources.templates import ListTemplatesResult, PdfTemplate, Template
 from .resources.uploads import UploadResult
@@ -101,6 +102,8 @@ __all__ = [
     "ListBalancesResult",
     "ListCatalogueResult",
     "ListTemplatesResult",
+    "PdfDocument",
+    "PdfResult",
     "PdfTemplate",
     "RawResponse",
     "Recipient",

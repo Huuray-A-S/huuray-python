@@ -19,15 +19,17 @@ from typing import Any
 #:
 #: Both the wire spelling (``Code``) and the mapped Python spelling (``code``,
 #: ``redeem_link``) are listed, so a redacted result object is as safe as a
-#: redacted response body.
+#: redacted response body. ``Content`` is a gift card PDF, which shows the code.
 SECRET_FIELDS: tuple[str, ...] = (
     "Code",
     "CVV",
     "RedeemLink",
+    "Content",
     "code",
     "cvv",
     "redeemLink",
     "redeem_link",
+    "content",
 )
 
 #: Fields carrying credentials or personal data, masked in any diagnostic output.
@@ -86,7 +88,10 @@ def redact(value: Any, depth: int = 0) -> Any:
     if isinstance(value, Mapping):
         out: dict[Any, Any] = {}
         for key, item in value.items():
-            if key in _SECRET:
+            if key in _SECRET and isinstance(item, (bytes, bytearray, memoryview)):
+                # Decoded content, such as a PDF, shows its size like any bytes.
+                out[key] = redact(item, depth + 1)
+            elif key in _SECRET:
                 out[key] = item if item is None or item == "" else BEARER_MARKER
             elif key in _SENSITIVE:
                 out[key] = item if item is None or item == "" else _mask_partial(str(item))

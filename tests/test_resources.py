@@ -261,6 +261,7 @@ class TestAsyncResourceParity:
             (sync_client.stock, async_client.stock),
             (sync_client.exchange_rates, async_client.exchange_rates),
             (sync_client.orders, async_client.orders),
+            (sync_client.pdfs, async_client.pdfs),
         ]
         for sync_resource, async_resource in pairs:
             assert surface(sync_resource) == surface(async_resource)

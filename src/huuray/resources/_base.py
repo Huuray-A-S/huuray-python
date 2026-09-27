@@ -16,7 +16,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import date, datetime
-from typing import TYPE_CHECKING, Any, Optional, Union
+from typing import TYPE_CHECKING, Any, Callable, Optional, Union
 
 from ..redact import _mask_partial
 
@@ -64,7 +64,7 @@ class Operation:
     body: Optional[dict[str, Any]] = None
     query: dict[str, str] = field(default_factory=dict)
     #: Whether repeating this call is safe. **Opt-in per operation** — never
-    #: inferred from the HTTP method, because four read-only v4 endpoints are
+    #: inferred from the HTTP method, because five read-only v4 endpoints are
     #: POSTs and two value-moving ones are too.
     retryable: bool = False
     files: tuple[FilePart, ...] = ()
@@ -72,6 +72,11 @@ class Operation:
     #: unreadable 2xx body: the cases where the call may have taken effect
     #: although no answer arrived.
     unknown_outcome_note: Optional[str] = None
+    #: Turns a parsed 2xx body into what the resource maps, e.g. by decoding a
+    #: base64 field. It raises ``ValueError`` when the body cannot be used, with
+    #: a message that quotes nothing from it; the body is then unreadable, just
+    #: like one that is not JSON, and a retryable read is repeated.
+    decode: Optional[Callable[[Any], Any]] = None
 
 
 class Resource:

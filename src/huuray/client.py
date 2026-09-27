@@ -11,7 +11,8 @@ import asyncio
 import json
 import re
 import time
-from dataclasses import dataclass
+from collections.abc import Mapping
+from dataclasses import dataclass, field
 from typing import Any, Callable, Generic, Optional, TypeVar
 from urllib.parse import urlsplit
 
@@ -41,6 +42,7 @@ from .resources.orders import (
     OrdersResource,
     Recipient,
 )
+from .resources.pdfs import AsyncPdfsResource, PdfsResource
 from .resources.stock import AsyncStockResource, StockResource
 from .resources.templates import AsyncTemplatesResource, TemplatesResource
 from .resources.uploads import AsyncUploadsResource, UploadsResource
@@ -95,6 +97,9 @@ class RawResponse(Generic[T]):
 
     data: T
     http_status: int
+    #: The response headers, as httpx returns them: looked up case-insensitively.
+    #: ``POST /v4/Pdf`` answers a 202 with ``Retry-After``. Left out of ``repr()``.
+    headers: Mapping[str, str] = field(default_factory=dict, repr=False)
 
 
 def _base_url_problem(base_url: str) -> Optional[str]:
@@ -316,11 +321,14 @@ class _BaseClient:
             op.path,
         )
 
-    def _interpret(self, status: int, text: str, op: Operation) -> RawResponse[Any]:
+    def _interpret(
+        self, status: int, text: str, op: Operation, headers: Mapping[str, str]
+    ) -> RawResponse[Any]:
         """Turn a finished response into a result, or raise.
 
-        Raises :class:`HuurayConnectionError` for a 2xx whose body is empty or
-        unparseable, and :class:`HuurayAPIError` for anything non-2xx.
+        Raises :class:`HuurayConnectionError` for a 2xx whose body is empty,
+        unparseable or rejected by the operation's ``decode``, and
+        :class:`HuurayAPIError` for anything non-2xx.
         """
         parsed: Any = _UNREADABLE
         if text:
@@ -349,7 +357,26 @@ class _BaseClient:
                     op.method,
                     op.path,
                 )
-            return RawResponse(data=parsed, http_status=status)
+            if op.decode is not None:
+                # Unusable content inside valid JSON, such as a PDF whose base64
+                # does not decode, is the same fault. Raised outside the except
+                # block, so no exception is chained.
+                problem: Optional[str] = None
+                try:
+                    parsed = op.decode(parsed)
+                except ValueError as exc:
+                    problem = str(exc)
+                if problem is not None:
+                    raise HuurayConnectionError(
+                        _with_note(
+                            f"{op.method} {op.path} returned HTTP {status} but the body could "
+                            f"not be read: {problem} ({len(text)} bytes).",
+                            op,
+                        ),
+                        op.method,
+                        op.path,
+                    )
+            return RawResponse(data=parsed, http_status=status, headers=headers)
 
         raise HuurayAPIError.from_response(
             status,
@@ -433,6 +460,7 @@ class HuurayClient(_BaseClient):
         self.exchange_rates = ExchangeRatesResource(self)
         self.orders = OrdersResource(self)
         self.uploads = UploadsResource(self)
+        self.pdfs = PdfsResource(self)
 
     # ---------------------------------------------------------- convenience
 
@@ -544,7 +572,7 @@ class HuurayClient(_BaseClient):
                 raise self._transport_error(exc, op) from exc
 
             try:
-                return self._interpret(response.status_code, text, op)
+                return self._interpret(response.status_code, text, op, response.headers)
             except HuurayConnectionError:
                 if attempt < attempts:
                     continue
@@ -615,6 +643,7 @@ class AsyncHuurayClient(_BaseClient):
         self.exchange_rates = AsyncExchangeRatesResource(self)
         self.orders = AsyncOrdersResource(self)
         self.uploads = AsyncUploadsResource(self)
+        self.pdfs = AsyncPdfsResource(self)
 
     # ---------------------------------------------------------- convenience
 
@@ -697,7 +726,7 @@ class AsyncHuurayClient(_BaseClient):
                 raise self._transport_error(exc, op) from exc
 
             try:
-                return self._interpret(response.status_code, text, op)
+                return self._interpret(response.status_code, text, op, response.headers)
             except HuurayConnectionError:
                 if attempt < attempts:
                     continue

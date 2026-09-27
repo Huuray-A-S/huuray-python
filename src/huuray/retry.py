@@ -9,11 +9,11 @@ Because of that, retries are **opt-in per operation**, never inferred from the
 HTTP method. Each resource method declares whether it is safe to repeat:
 
 ===========  ================================================================
-retryable    Balance, ExchangeRates, Catalogue, Template, Stock, Search
+retryable    Balance, ExchangeRates, Catalogue, Template, Stock, Search, Pdf
 never        Order, Resend, Cancel, Upload
 ===========  ================================================================
 
-Note that four of the retryable operations are POSTs. They are POSTs because
+Note that five of the retryable operations are POSTs. They are POSTs because
 they take a request body, not because they change anything.
 """
 

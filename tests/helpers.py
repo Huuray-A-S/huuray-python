@@ -141,6 +141,8 @@ class MockResponse:
     #: This is the case that matters most: an HTTP library resolves on headers,
     #: and a fault while the body streams must not escape the error taxonomy.
     body_raises: Optional[Exception] = None
+    #: Response headers besides ``Content-Type``, e.g. ``Retry-After``.
+    headers: dict[str, str] = field(default_factory=dict)
 
 
 class _ExplodingStream(httpx.SyncByteStream, httpx.AsyncByteStream):
@@ -240,7 +242,7 @@ class RecordingTransport:
         if mock.raises is not None:
             raise mock.raises
 
-        headers = {"Content-Type": "application/json"}
+        headers = {"Content-Type": "application/json", **mock.headers}
         if mock.body_raises is not None:
             return httpx.Response(
                 mock.status, headers=headers, stream=_ExplodingStream(mock.body_raises)

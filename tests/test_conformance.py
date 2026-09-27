@@ -367,6 +367,19 @@ def exercise_everything(client: Any) -> Any:
             file_name="purchase-order-4711.pdf",
             content_type="application/pdf",
         ),
+        client.pdfs.get(
+            order_uid="0f8a3c52-1d6e-4b7a-9c2f-5e4d3b2a1c90",
+            voucher_id=5123402,
+            pdf_template_uid="c7d1e2f3-4a5b-4c6d-8e9f-0a1b2c3d4e5f",
+            combine=True,
+        ),
+        client.pdfs.get_when_ready(
+            order_uid="0f8a3c52-1d6e-4b7a-9c2f-5e4d3b2a1c90",
+            voucher_id=5123401,
+            pdf_template_uid="c7d1e2f3-4a5b-4c6d-8e9f-0a1b2c3d4e5f",
+            combine=False,
+            max_wait=60,
+        ),
     ]
 
 
@@ -412,8 +425,8 @@ class TestCoverageGate:
         exercised = {f"{call.method.upper()} {call.path}" for call in calls}
         assert sorted(spec_operations() - exercised) == []
 
-    def test_covers_exactly_the_ten_v4_operations_no_more_no_fewer(self):
-        assert len(spec_operations()) == 10
+    def test_covers_exactly_the_eleven_v4_operations_no_more_no_fewer(self):
+        assert len(spec_operations()) == 11
 
     def test_the_spec_is_still_v4_this_client_targets_v4_only(self):
         assert SPEC["info"]["version"] == "v4"
@@ -459,6 +472,20 @@ class TestRequestConformanceGate:
             ("File", "purchase-order-4711.pdf", "application/pdf")
         ]
 
+    def test_the_pdf_requests_in_the_harness_carry_every_field(self, calls):
+        # The gate above only validates fields the harness sends. Both PDF calls
+        # send all four, so each name and type is checked against PdfRequest.
+        pdfs = [call for call in calls if call.path == "/v4/Pdf"]
+        assert [call.body for call in pdfs] == [
+            {
+                "OrderUID": "0f8a3c52-1d6e-4b7a-9c2f-5e4d3b2a1c90",
+                "VoucherID": voucher_id,
+                "PDFTemplateUid": "c7d1e2f3-4a5b-4c6d-8e9f-0a1b2c3d4e5f",
+                "Combine": combine,
+            }
+            for voucher_id, combine in [(5123402, True), (5123401, False)]
+        ]
+
     def test_sends_no_body_to_post_v4_template_which_declares_none(self, calls):
         template_call = next(call for call in calls if call.path == "/v4/Template")
         assert template_call.body_omitted is True
@@ -487,6 +514,7 @@ class TestTheHarnessStaysLinkedToThePublicSurface:
             "send_reward",
         ],
         "UploadsResource": ["create"],
+        "PdfsResource": ["get", "get_when_ready"],
     }
 
     @staticmethod
@@ -499,6 +527,7 @@ class TestTheHarnessStaysLinkedToThePublicSurface:
             client.exchange_rates,
             client.orders,
             client.uploads,
+            client.pdfs,
         ]
         return {
             type(resource).__name__.removeprefix("Async"): sorted(
@@ -573,6 +602,20 @@ class TestTheGatesThemselvesWork:
         schema = SPEC["components"]["schemas"]["StockRequest"]
         errors = validate(schema, {"ProductToken": "x", "Value": 1.5})
         assert any("Value" in error and "expected integer" in error for error in errors)
+
+    def test_flags_a_pdf_request_without_its_required_order_uid(self):
+        schema = SPEC["components"]["schemas"]["PdfRequest"]
+        errors = validate(schema, {"VoucherID": 5123401, "Combine": True})
+        assert any("OrderUID" in error and "required" in error for error in errors)
+
+    def test_flags_a_pdf_request_with_a_wrongly_typed_or_undocumented_field(self):
+        schema = SPEC["components"]["schemas"]["PdfRequest"]
+        errors = validate(
+            schema, {"OrderUID": "x", "VoucherID": "5123401", "Combine": "yes", "VoucherIDs": [1]}
+        )
+        assert any("VoucherID" in error and "expected integer" in error for error in errors)
+        assert any("Combine" in error and "expected boolean" in error for error in errors)
+        assert any("VoucherIDs" in error and "not defined in the spec" in error for error in errors)
 
     def test_flags_a_bool_where_an_integer_is_expected(self):
         schema = SPEC["components"]["schemas"]["StockRequest"]
