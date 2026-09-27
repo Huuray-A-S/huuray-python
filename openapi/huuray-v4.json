@@ -541,6 +541,125 @@
         ]
       }
     },
+    "/v4/Pdf": {
+      "post": {
+        "tags": [
+          "Pdf"
+        ],
+        "summary": "Used to get the giftcard PDF of a previous order",
+        "description": "Returns the giftcard PDF of each voucher on the order (or of a single voucher), base64 encoded, or one combined PDF when Combine is set. The PDF contains the redeemable codes. Without PDFTemplateUid, the PDF template attached to the delivery email at order time (DeliveryPDFTemplateUid) is used, so the document is the one the recipient gets by email; an order without one is rejected with a 422. With PDFTemplateUid, any PDF template from the Template endpoint can be used, as long as it is available for the ordered product's brand and country, otherwise the request is rejected with a 422. Cancelled vouchers have no PDF. Only orders with at most 3 receivers are supported, larger orders are rejected with a 422. An order that is still being processed, or a voucher whose code the supplier has not delivered yet, is answered with a 202 and a Retry-After header (in seconds): ask again after that",
+        "parameters": [
+          {
+            "name": "X-API-NONCE",
+            "in": "header",
+            "description": "A random value that can only be used once every 60 days. (max 50 characters)<br /><small>(this prevents your message from being re-transmitted, and thereby also replay attacks)</small>",
+            "required": true
+          },
+          {
+            "name": "X-API-HASH",
+            "in": "header",
+            "description": "The SHA512 hash of a concatenated string containing the following: ( API-SECRET + NONCE ).<br /><small>(this is used to authenticate you)</small>",
+            "required": true
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PdfRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PdfResponse"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PdfResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Response"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Response"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Response"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Response"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Content",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Response"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Response"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "ApiToken": []
+          }
+        ]
+      }
+    },
     "/v4/Resend": {
       "post": {
         "tags": [
@@ -1617,6 +1736,112 @@
         },
         "additionalProperties": false,
         "description": "An object containing information about a PDF template"
+      },
+      "PdfDocument": {
+        "title": "Document (Pdf)",
+        "type": "object",
+        "properties": {
+          "VoucherIDs": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int32"
+            },
+            "description": "The unique identifiers of the vouchers in the document",
+            "nullable": true
+          },
+          "PDFTemplateUid": {
+            "type": "string",
+            "description": "The Uid of the PDF template the document is built from (null when a combined document is built from several templates)",
+            "nullable": true
+          },
+          "FileName": {
+            "type": "string",
+            "description": "A suggested file name for the document",
+            "nullable": true
+          },
+          "ContentType": {
+            "type": "string",
+            "description": "The content type of the document (application/pdf)",
+            "nullable": true
+          },
+          "Content": {
+            "type": "string",
+            "description": "The document, base64 encoded",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "A giftcard PDF document. It contains the redeemable codes, so handle it as you would the codes"
+      },
+      "PdfRequest": {
+        "title": "Pdf Request",
+        "required": [
+          "OrderUID"
+        ],
+        "type": "object",
+        "properties": {
+          "OrderUID": {
+            "type": "string",
+            "description": "The unique identifier of the order",
+            "nullable": true
+          },
+          "VoucherID": {
+            "type": "integer",
+            "description": "The unique identifier of a voucher on the order. When omitted, every voucher on the order is returned (cancelled vouchers are left out)",
+            "format": "int32",
+            "nullable": true
+          },
+          "PDFTemplateUid": {
+            "type": "string",
+            "description": "The Uid of a PDF template from the Template endpoint. When omitted, the PDF template attached to the delivery email at order time (DeliveryPDFTemplateUid) is used, and the document is the one the recipient gets by email",
+            "nullable": true
+          },
+          "Combine": {
+            "type": "boolean",
+            "description": "Set to true to get one PDF containing all the vouchers, instead of one PDF per voucher",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "An object identifying the order (and optionally the voucher) to get the giftcard PDF of"
+      },
+      "PdfResponse": {
+        "title": "Pdf Response",
+        "type": "object",
+        "properties": {
+          "OrderUID": {
+            "type": "string",
+            "description": "The unique identifier of the order",
+            "nullable": true
+          },
+          "Documents": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PdfDocument"
+            },
+            "description": "The PDF documents: one per voucher, or a single one when Combine is set",
+            "nullable": true
+          },
+          "Status": {
+            "type": "integer",
+            "description": "HttpStatus code for the response",
+            "format": "int32"
+          },
+          "Message": {
+            "type": "string",
+            "description": "Deprecated, use StatusMessage instead. Error message describing an error that occurred during the processing of the request",
+            "nullable": true,
+            "deprecated": true
+          },
+          "StatusMessage": {
+            "type": "string",
+            "description": "Status message describing an error that occurred during the processing of the request",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "The response from the Pdf request"
       },
       "ResendRequest": {
         "title": "Resend Request",
