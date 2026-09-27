@@ -644,6 +644,23 @@ class TestGetWhenReady:
         assert str(caught.value).endswith("waiting 30 seconds more would pass max_wait.")
 
     @pytest.mark.parametrize(
+        ("fields", "last"),
+        [
+            ({"Message": "Supplier code pending"}, "Supplier code pending"),
+            ({"StatusMessage": "Still queued", "Message": "Old text"}, "Still queued"),
+        ],
+        ids=["only-the-deprecated-message", "status-message-first"],
+    )
+    def test_the_last_status_falls_back_to_the_deprecated_message(self, clock, fields, last):
+        body = {"OrderUID": ORDER_UID, "Documents": [], "Status": 202, **fields}
+        client, _ = make_client(
+            [MockResponse(status=202, json=body, headers={"Retry-After": "30"})]
+        )
+        with pytest.raises(HuurayTimeoutError) as caught:
+            client.pdfs.get_when_ready(order_uid=ORDER_UID, max_wait=0)
+        assert str(caught.value).endswith(f"would pass max_wait. Last status: {last}")
+
+    @pytest.mark.parametrize(
         ("max_wait", "header", "within", "waiting"),
         [
             (1, "2", "1 second", "2 seconds"),
