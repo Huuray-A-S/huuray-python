@@ -20,6 +20,7 @@ from huuray import (
     HuurayServerError,
     HuurayTimeoutError,
     HuurayValidationError,
+    RawResponse,
     RetryOptions,
 )
 from huuray.auth import sign_request
@@ -696,6 +697,19 @@ class TestRequestEscapeHatch:
         client.request("GET", "//evil.example/v4/Balance")
         assert calls[0].origin == "https://api.huuray.com"
         assert calls[0].path == "//evil.example/v4/Balance"
+
+
+class TestRawResponse:
+    def test_the_headers_change_neither_equality_nor_hashing(self):
+        # As before the headers were added: httpx.Headers is unhashable, and two
+        # answers differing only in, say, Date would otherwise compare unequal.
+        with_headers = RawResponse(
+            data="ok", http_status=200, headers=httpx.Headers({"Retry-After": "1"})
+        )
+        without = RawResponse(data="ok", http_status=200)
+        assert with_headers == without
+        assert hash(with_headers) == hash(without)
+        assert with_headers != RawResponse(data="ok", http_status=202)
 
 
 class TestAsyncClient:

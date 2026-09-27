@@ -98,8 +98,10 @@ class RawResponse(Generic[T]):
     data: T
     http_status: int
     #: The response headers, as httpx returns them: looked up case-insensitively.
-    #: ``POST /v4/Pdf`` answers a 202 with ``Retry-After``. Left out of ``repr()``.
-    headers: Mapping[str, str] = field(default_factory=dict, repr=False)
+    #: ``POST /v4/Pdf`` answers a 202 with ``Retry-After``. Left out of ``repr()``,
+    #: and out of equality and hashing, which compare ``data`` and ``http_status``
+    #: as they did before the headers were added.
+    headers: Mapping[str, str] = field(default_factory=dict, repr=False, compare=False)
 
 
 def _base_url_problem(base_url: str) -> Optional[str]:

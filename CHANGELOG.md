@@ -25,7 +25,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `Content` and `content` are in `SECRET_FIELDS`: a gift card PDF shows the redeemable
   code. `redact()` shows bytes under such a key as their size, and `PdfDocument`
   shows `content=[N bytes]` in `repr()`.
-- `RawResponse` carries the response `headers`.
+- `RawResponse` carries the response `headers`, left out of `repr()`, equality and
+  hashing.
 - `uploads.create(file=..., file_name=..., content_type=None)` on both clients —
   `POST /v4/Upload`, sent as `multipart/form-data` with the file as the part `File`.
   It returns an `UploadResult` (`token`, `file_name`, `content_type`, `size`); pass
