@@ -576,10 +576,19 @@ class TestGetWhenReady:
         assert clock.sleeps == [30]
         assert len(calls) == 2
 
-    def test_a_retry_after_of_zero_asks_again_at_once(self, clock):
-        client, calls = make_client([not_ready("0"), ready()])
+    def test_a_retry_after_of_zero_still_waits_one_second(self, clock):
+        # Never back-to-back requests, whatever a server or proxy sends.
+        client, calls = make_client([not_ready("0"), not_ready("00"), ready()])
         assert client.pdfs.get_when_ready(order_uid=ORDER_UID).ready is True
-        assert clock.sleeps == [0]
+        assert clock.sleeps == [1, 1]
+        assert len(calls) == 3
+
+    def test_the_one_second_floor_counts_towards_max_wait(self, clock):
+        # The floored wait, not the 0 the API asked for, is what must fit.
+        client, calls = make_client([not_ready("0"), not_ready("0")])
+        with pytest.raises(HuurayTimeoutError):
+            client.pdfs.get_when_ready(order_uid=ORDER_UID, max_wait=1.5)
+        assert clock.sleeps == [1]
         assert len(calls) == 2
 
     def test_gives_up_before_a_wait_would_pass_max_wait_with_the_last_status(self, clock):
@@ -669,10 +678,13 @@ class TestAsyncGetWhenReady:
         assert pdfs_module._monotonic is time.monotonic
 
     async def test_awaits_the_real_asyncio_sleep_without_blocking(self, monkeypatch):
+        # Retry-After: 0 is floored to a real one-second wait, the shortest there is.
         monkeypatch.setattr("huuray.resources.pdfs._sleep", blocking_sleep)
         client, calls = make_async_client([not_ready("0"), ready()])
+        started = time.monotonic()
         async with client:
             assert await client.pdfs.get_when_ready(order_uid=ORDER_UID) == READY_RESULT
+        assert time.monotonic() - started >= 0.9
         assert len(calls) == 2
 
     async def test_waits_retry_after_between_attempts_signing_each_with_a_new_nonce(
@@ -685,6 +697,13 @@ class TestAsyncGetWhenReady:
         assert async_clock.sleeps == [5, 30]
         assert len(calls) == 3
         assert len(set(nonces(calls))) == 3
+
+    async def test_a_retry_after_of_zero_still_waits_one_second(self, async_clock):
+        client, calls = make_async_client([not_ready("0"), ready()])
+        async with client:
+            assert await client.pdfs.get_when_ready(order_uid=ORDER_UID) == READY_RESULT
+        assert async_clock.sleeps == [1]
+        assert len(calls) == 2
 
     async def test_gives_up_before_a_wait_would_pass_max_wait(self, async_clock):
         client, calls = make_async_client([not_ready("30", "first"), not_ready("30", "second")])

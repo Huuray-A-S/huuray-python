@@ -22,6 +22,10 @@ DEFAULT_MAX_WAIT = 600.0
 #: The wait after a 202 without a usable ``Retry-After``, in seconds.
 DEFAULT_RETRY_AFTER = 30
 
+#: The shortest wait between two requests, in seconds: a ``Retry-After: 0``
+#: from a server or proxy never turns into back-to-back requests.
+MIN_WAIT = 1
+
 #: ``Retry-After`` in whole seconds. Anything else, the HTTP-date form included,
 #: reads as absent.
 _DELTA_SECONDS = re.compile(r"[0-9]+")
@@ -209,7 +213,7 @@ def _wait(
     max_wait: float,
 ) -> int:
     """Seconds to wait before asking again. Raises if that would pass ``max_wait``."""
-    wait = DEFAULT_RETRY_AFTER if result.retry_after is None else result.retry_after
+    wait = DEFAULT_RETRY_AFTER if result.retry_after is None else max(MIN_WAIT, result.retry_after)
     if _monotonic() + wait > deadline:
         status_message = response.data.status_message
         last = f" Last status: {status_message}" if status_message else ""
@@ -276,8 +280,8 @@ class PdfsResource(Resource):
         """Like :meth:`get`, but asks again on a 202 until the PDFs are ready.
 
         ``POST /v4/Pdf``, repeated: after each 202 it waits ``Retry-After``
-        seconds, or 30 without one, and every request is signed with a new
-        nonce. An error is raised at once, not waited out.
+        seconds, at least 1, or 30 without one, and every request is signed
+        with a new nonce. An error is raised at once, not waited out.
 
         :param max_wait: Seconds to keep asking, 10 minutes by default. When the
             next wait would pass it, :class:`~huuray.HuurayTimeoutError` is

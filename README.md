@@ -167,7 +167,7 @@ else:
     ...  # a 202: ask again after result.retry_after seconds
 ```
 
-A 202 is not success: the order is still being processed, or a supplier has not delivered a code yet, so `ready` is `False` and `documents` is empty. `pdfs.get_when_ready()` asks again for you, waiting `Retry-After` seconds (30 without one), and raises `HuurayTimeoutError` when the next wait would pass `max_wait` (10 minutes by default).
+A 202 is not success: the order is still being processed, or a supplier has not delivered a code yet, so `ready` is `False` and `documents` is empty. `pdfs.get_when_ready()` asks again for you, waiting `Retry-After` seconds (at least 1, or 30 without one), and raises `HuurayTimeoutError` when the next wait would pass `max_wait` (10 minutes by default).
 
 **The PDF is a bearer instrument**: it shows the redeemable code, so whoever holds the file holds the value. Never log `content`, and keep it no longer than you need it. `repr()` and `redact()` show only its size.
 
