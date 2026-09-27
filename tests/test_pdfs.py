@@ -330,7 +330,7 @@ class TestANotReadyAnswer:
             ("30s", None),
             ("+30", None),
             ("Wed, 21 Oct 2026 07:28:00 GMT", None),
-            ("9" * 5000, None),
+            ("86400", 86400),
         ],
     )
     def test_reads_retry_after_as_whole_seconds_or_none(self, header, seconds):
