@@ -14,11 +14,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `PdfResult` (`ready`, `order_uid`, `documents`, `retry_after`); each `PdfDocument`
   has `voucher_ids`, `pdf_template_uid`, `file_name`, `content_type` and `content`,
   the PDF decoded to bytes. `ready` is `False` on a 202, the answer while the order is
-  processed or a supplier code is pending, and `retry_after` is the `Retry-After`
-  header in whole seconds. It is a read, retried on connection failures and 5xx. A
-  200 whose `Content` is not valid base64 raises `HuurayConnectionError`, like any
-  unreadable 2xx. The token needs the Search permission; the API, not this client,
-  enforces its limit of 3 receivers per order.
+  processed or a supplier code is pending, as on any 2xx other than 200, and
+  `retry_after` is the `Retry-After` header in whole seconds. It is a read, retried
+  on connection failures and 5xx. A 200 whose `Content` is not valid base64 raises
+  `HuurayConnectionError`, like any unreadable 2xx. The token needs the Search
+  permission; the API, not this client, enforces its limit of 3 receivers per order.
 - `pdfs.get_when_ready(..., max_wait=600.0)` on both clients repeats the call while
   the API answers 202, waiting `Retry-After` seconds (at least 1, or 30 without one),
   and raises `HuurayTimeoutError` when the next wait would pass `max_wait`, saying it

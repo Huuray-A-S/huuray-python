@@ -74,7 +74,10 @@ class PdfResult:
 
     #: ``True`` when the API answered 200 with the documents. ``False`` on a
     #: 202: the order is still in Huuray's queue, or a supplier has not
-    #: delivered a code yet. Ask again after ``retry_after`` seconds.
+    #: delivered a code yet. Ask again after ``retry_after`` seconds. Any 2xx
+    #: other than 200 is treated like 202. A 200 without documents is still
+    #: ``True``, with ``documents`` empty, though Huuray's server never sends
+    #: one: every case without vouchers is a 404.
     ready: bool
     order_uid: Optional[str]
     #: One document per voucher, or a single one when combined. Empty when not
@@ -292,7 +295,9 @@ class PdfsResource(Resource):
 
         ``POST /v4/Pdf``, repeated: after each 202 it waits ``Retry-After``
         seconds, at least 1, or 30 without one, and every request is signed
-        with a new nonce. An error is raised at once, not waited out.
+        with a new nonce. Any 2xx other than 200 is treated like 202 (not
+        ready); any non-2xx ends the wait with an exception, after the retries
+        any read gets on a 5xx.
 
         :param max_wait: Seconds to keep asking, 10 minutes by default. When the
             next wait would pass it, :class:`~huuray.HuurayTimeoutError` is
