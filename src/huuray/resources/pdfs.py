@@ -219,14 +219,23 @@ def _wait(
     if wait > deadline - _monotonic():
         status_message = response.data.status_message
         last = f" Last status: {status_message}" if status_message else ""
+        # It gives up early, so the message must not say that max_wait has passed.
         raise HuurayTimeoutError(
             op.method,
             op.path,
             max_wait,
-            f"The gift card PDF was still not ready, and waiting {wait}s more would pass "
-            f"max_wait.{last}",
+            f"The gift card PDF was still not ready, and waiting {_seconds(wait)} more would "
+            f"pass max_wait.{last}",
+            lead=f"{op.method} {op.path} gave up waiting for the gift card PDF within max_wait "
+            f"({_seconds(max_wait)}).",
         )
     return wait
+
+
+def _seconds(value: float) -> str:
+    """A number of seconds in words: ``1 second``, ``30 seconds``, ``29.5 seconds``."""
+    number = int(value) if value == int(value) else value
+    return f"{number} second" if number == 1 else f"{number} seconds"
 
 
 class PdfsResource(Resource):

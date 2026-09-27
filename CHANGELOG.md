@@ -21,8 +21,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   enforces its limit of 3 receivers per order.
 - `pdfs.get_when_ready(..., max_wait=600.0)` on both clients repeats the call while
   the API answers 202, waiting `Retry-After` seconds (at least 1, or 30 without one),
-  and raises `HuurayTimeoutError` with the last status when the next wait would pass
-  `max_wait`.
+  and raises `HuurayTimeoutError` when the next wait would pass `max_wait`, saying it
+  gave up waiting within `max_wait` and giving the last status.
 - `Content` and `content` are in `SECRET_FIELDS`: a gift card PDF shows the redeemable
   code. `redact()` shows bytes under such a key as their size, and `PdfDocument`
   shows `content=[N bytes]` in `repr()`.

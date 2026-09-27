@@ -602,9 +602,11 @@ class TestGetWhenReady:
             client.pdfs.get_when_ready(order_uid=ORDER_UID, max_wait=60)
         assert type(caught.value) is HuurayTimeoutError
         assert caught.value.timeout == 60
+        # It gives up with 30 seconds of max_wait left, so it never says it timed out after 60.
         assert str(caught.value) == (
-            "POST /v4/Pdf timed out after 60s. The gift card PDF was still not ready, and "
-            "waiting 30s more would pass max_wait. Last status: third"
+            "POST /v4/Pdf gave up waiting for the gift card PDF within max_wait (60 seconds). "
+            "The gift card PDF was still not ready, and waiting 30 seconds more would pass "
+            "max_wait. Last status: third"
         )
         assert clock.sleeps == [30, 30]
         assert len(calls) == 3
@@ -618,7 +620,7 @@ class TestGetWhenReady:
 
     def test_gives_up_on_the_30_second_default_too(self, clock):
         client, calls = make_client([not_ready(None)])
-        with pytest.raises(HuurayTimeoutError, match="waiting 30s more"):
+        with pytest.raises(HuurayTimeoutError, match="waiting 30 seconds more"):
             client.pdfs.get_when_ready(order_uid=ORDER_UID, max_wait=29.5)
         assert len(calls) == 1
 
@@ -639,7 +641,28 @@ class TestGetWhenReady:
         client, _ = make_client([MockResponse(status=202, json={}, headers={"Retry-After": "30"})])
         with pytest.raises(HuurayTimeoutError) as caught:
             client.pdfs.get_when_ready(order_uid=ORDER_UID, max_wait=0)
-        assert str(caught.value).endswith("waiting 30s more would pass max_wait.")
+        assert str(caught.value).endswith("waiting 30 seconds more would pass max_wait.")
+
+    @pytest.mark.parametrize(
+        ("max_wait", "header", "within", "waiting"),
+        [
+            (1, "2", "1 second", "2 seconds"),
+            (1.0, "2", "1 second", "2 seconds"),
+            (0.5, "1", "0.5 seconds", "1 second"),
+            (0, "0", "0 seconds", "1 second"),
+            (600.0, "900", "600 seconds", "900 seconds"),
+        ],
+    )
+    def test_the_error_counts_the_seconds_in_words(self, clock, max_wait, header, within, waiting):
+        client, _ = make_client([not_ready(header, "busy")])
+        with pytest.raises(HuurayTimeoutError) as caught:
+            client.pdfs.get_when_ready(order_uid=ORDER_UID, max_wait=max_wait)
+        assert str(caught.value) == (
+            f"POST /v4/Pdf gave up waiting for the gift card PDF within max_wait ({within}). "
+            f"The gift card PDF was still not ready, and waiting {waiting} more would pass "
+            "max_wait. Last status: busy"
+        )
+        assert caught.value.timeout == max_wait
 
     def test_max_wait_defaults_to_ten_minutes(self, clock):
         client, calls = make_client([not_ready("300")] * 3)
@@ -723,9 +746,15 @@ class TestAsyncGetWhenReady:
     async def test_gives_up_before_a_wait_would_pass_max_wait(self, async_clock):
         client, calls = make_async_client([not_ready("30", "first"), not_ready("30", "second")])
         async with client:
-            with pytest.raises(HuurayTimeoutError, match="Last status: second") as caught:
+            with pytest.raises(HuurayTimeoutError) as caught:
                 await client.pdfs.get_when_ready(order_uid=ORDER_UID, max_wait=45)
+        assert type(caught.value) is HuurayTimeoutError
         assert caught.value.timeout == 45
+        assert str(caught.value) == (
+            "POST /v4/Pdf gave up waiting for the gift card PDF within max_wait (45 seconds). "
+            "The gift card PDF was still not ready, and waiting 30 seconds more would pass "
+            "max_wait. Last status: second"
+        )
         assert async_clock.sleeps == [30]
         assert len(calls) == 2
 

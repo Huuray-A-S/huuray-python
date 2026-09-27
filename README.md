@@ -329,7 +329,7 @@ Every error raised by this library extends `HuurayError`. Input guards — a fra
 |---|---|
 | `HuurayConfigError` | missing or invalid client options |
 | `HuurayConnectionError` | the request never reached the API, or its response was unreadable |
-| `HuurayTimeoutError` | the request exceeded `timeout`, or `pdfs.get_when_ready()` reached `max_wait` |
+| `HuurayTimeoutError` | the request exceeded `timeout`, or `pdfs.get_when_ready()` gave up waiting within `max_wait` |
 | `HuurayAuthError` | 401 or 403 — see *Authentication* above |
 | `HuurayNotFoundError` | 404 — including "no results", see above |
 | `HuurayValidationError` | 422 |

@@ -37,10 +37,24 @@ class HuurayConnectionError(HuurayError):
 
 
 class HuurayTimeoutError(HuurayConnectionError):
-    """The request exceeded the configured timeout."""
+    """The request exceeded the configured timeout.
 
-    def __init__(self, method: str, path: str, timeout: float, detail: str | None = None) -> None:
-        message = f"{method} {path} timed out after {timeout}s."
+    Also raised when ``pdfs.get_when_ready()`` gives up within its ``max_wait``,
+    which ``timeout`` then holds.
+    """
+
+    def __init__(
+        self,
+        method: str,
+        path: str,
+        timeout: float,
+        detail: str | None = None,
+        *,
+        lead: str | None = None,
+    ) -> None:
+        # ``lead`` replaces the opening sentence for a wait that gave up early,
+        # which must not claim that the whole timeout passed.
+        message = lead or f"{method} {path} timed out after {timeout}s."
         super().__init__(f"{message} {detail}" if detail else message, method, path)
         self.timeout = timeout
 
