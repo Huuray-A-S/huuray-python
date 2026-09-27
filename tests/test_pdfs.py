@@ -344,6 +344,16 @@ class TestANotReadyAnswer:
         assert client.pdfs.get(order_uid=ORDER_UID).ready is False
         assert len(calls) == 1
 
+    @pytest.mark.parametrize("status", [201, 203, 206, 299])
+    def test_any_2xx_other_than_200_is_not_ready_either(self, status):
+        body = envelope(status, [document(5123401, PDF_ONE)])
+        client, _ = make_client(
+            MockResponse(status=status, json=body, headers={"Retry-After": "5"})
+        )
+        result = client.pdfs.get(order_uid=ORDER_UID)
+        assert result.ready is False
+        assert result.retry_after == 5
+
 
 class TestGarbledContent:
     """A 200 whose documents cannot be read is a transport fault, like a body that is not JSON."""
@@ -698,6 +708,20 @@ class TestGetWhenReady:
         assert clock.sleeps == [30, 30]
         assert len(calls) == 3
 
+    @pytest.mark.parametrize("status", [201, 206])
+    def test_waits_on_any_2xx_other_than_200_as_on_a_202(self, clock, status):
+        client, calls = make_client(
+            [
+                MockResponse(
+                    status=status, json=envelope(status, []), headers={"Retry-After": "5"}
+                ),
+                ready(),
+            ]
+        )
+        assert client.pdfs.get_when_ready(order_uid=ORDER_UID) == READY_RESULT
+        assert clock.sleeps == [5]
+        assert len(calls) == 2
+
     def test_an_error_is_raised_at_once_not_waited_out(self, clock):
         client, calls = make_client(
             [not_ready("5"), MockResponse(status=404, json=envelope(404, [], "Order cancelled"))]
@@ -773,6 +797,18 @@ class TestAsyncGetWhenReady:
             "max_wait. Last status: second"
         )
         assert async_clock.sleeps == [30]
+        assert len(calls) == 2
+
+    async def test_waits_on_any_2xx_other_than_200_as_on_a_202(self, async_clock):
+        client, calls = make_async_client(
+            [
+                MockResponse(status=201, json=envelope(201, []), headers={"Retry-After": "5"}),
+                ready(),
+            ]
+        )
+        async with client:
+            assert await client.pdfs.get_when_ready(order_uid=ORDER_UID) == READY_RESULT
+        assert async_clock.sleeps == [5]
         assert len(calls) == 2
 
     async def test_gives_up_at_once_on_a_retry_after_too_large_for_a_float(self, async_clock):
