@@ -153,6 +153,26 @@ The five order fields are optional on `orders.create()`, `orders.create_sync()` 
 
 **An upload is never retried.** Each one stages a new file that counts towards your account's limit of pending uploads until an order uses its token or the upload is cleaned up, and nothing can look up an upload whose answer was lost. A timeout or a dropped connection raises the ordinary `HuurayTimeoutError` or `HuurayConnectionError`, saying the file may still have been stored.
 
+## Fetching a gift card PDF
+
+`pdfs.get()` returns the gift card PDFs of an order, one per voucher or one combined:
+
+```python
+result = huuray.pdfs.get(order_uid=reward.order_uid)  # voucher_id=, pdf_template_uid=, combine=True
+
+if result.ready:
+    for document in result.documents:
+        deliver(document.file_name, document.content)  # content is the PDF, as bytes
+else:
+    ...  # a 202: ask again after result.retry_after seconds
+```
+
+A 202 is not success: the order is still being processed, or a supplier has not delivered a code yet, so `ready` is `False` and `documents` is empty. `pdfs.get_when_ready()` asks again for you, waiting `Retry-After` seconds (30 without one), and raises `HuurayTimeoutError` when the next wait would pass `max_wait` (10 minutes by default).
+
+**The PDF is a bearer instrument**: it shows the redeemable code, so whoever holds the file holds the value. Never log `content`, and keep it no longer than you need it. `repr()` and `redact()` show only its size.
+
+Your API token needs the **Search** permission. The API serves orders with at most 3 receivers and answers larger ones with a 422, raised as `HuurayValidationError`; this client does not check. A PDF can take a while to render and run to several MB, so give these calls a longer timeout, e.g. a client built with `timeout=100.0`. The client sets no limit on the size of a response; Huuray advises allowing at least 20 MB.
+
 ## Seven things worth knowing
 
 These are the parts of the API that are easy to get wrong. The client handles each one, but the behaviour is worth understanding.
@@ -272,7 +292,7 @@ HuurayClient(api_token=..., api_secret=..., hash_encoding="base64")
 
 ## API coverage
 
-All ten v4 operations, and nothing else. Every method maps to one operation in the [Swagger reference](https://api.huuray.com/swagger/index.html):
+All eleven v4 operations, and nothing else. Every method maps to one operation in the [Swagger reference](https://api.huuray.com/swagger/index.html):
 
 | Method | Endpoint |
 |---|---|
@@ -288,6 +308,8 @@ All ten v4 operations, and nothing else. Every method maps to one operation in t
 | `orders.resend(...)` | `POST /v4/Resend` |
 | `orders.cancel(...)` | `DELETE /v4/Cancel` |
 | `uploads.create(file=..., file_name=...)` | `POST /v4/Upload` (`multipart/form-data`) |
+| `pdfs.get(order_uid=...)` | `POST /v4/Pdf` |
+| `pdfs.get_when_ready(order_uid=...)` | `POST /v4/Pdf`, repeated while it answers 202 |
 
 Every one of these exists on both clients, identically — `AsyncHuurayClient` differs only in that you await it.
 
@@ -307,7 +329,7 @@ Every error raised by this library extends `HuurayError`. Input guards — a fra
 |---|---|
 | `HuurayConfigError` | missing or invalid client options |
 | `HuurayConnectionError` | the request never reached the API, or its response was unreadable |
-| `HuurayTimeoutError` | the request exceeded `timeout` |
+| `HuurayTimeoutError` | the request exceeded `timeout`, or `pdfs.get_when_ready()` reached `max_wait` |
 | `HuurayAuthError` | 401 or 403 — see *Authentication* above |
 | `HuurayNotFoundError` | 404 — including "no results", see above |
 | `HuurayValidationError` | 422 |

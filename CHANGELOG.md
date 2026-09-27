@@ -9,6 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `pdfs.get(order_uid=..., voucher_id=None, pdf_template_uid=None, combine=None)` on
+  both clients — `POST /v4/Pdf`, the gift card PDFs of an order. It returns a
+  `PdfResult` (`ready`, `order_uid`, `documents`, `retry_after`); each `PdfDocument`
+  has `voucher_ids`, `pdf_template_uid`, `file_name`, `content_type` and `content`,
+  the PDF decoded to bytes. `ready` is `False` on a 202, the answer while the order is
+  processed or a supplier code is pending, and `retry_after` is the `Retry-After`
+  header in whole seconds. It is a read, retried on connection failures and 5xx. A
+  200 whose `Content` is not valid base64 raises `HuurayConnectionError`, like any
+  unreadable 2xx. The token needs the Search permission; the API, not this client,
+  enforces its limit of 3 receivers per order.
+- `pdfs.get_when_ready(..., max_wait=600.0)` on both clients repeats the call while
+  the API answers 202, waiting `Retry-After` seconds (30 without one), and raises
+  `HuurayTimeoutError` with the last status when the next wait would pass `max_wait`.
+- `Content` and `content` are in `SECRET_FIELDS`: a gift card PDF shows the redeemable
+  code. `redact()` shows bytes under such a key as their size, and `PdfDocument`
+  shows `content=[N bytes]` in `repr()`.
+- `RawResponse` carries the response `headers`.
 - `uploads.create(file=..., file_name=..., content_type=None)` on both clients —
   `POST /v4/Upload`, sent as `multipart/form-data` with the file as the part `File`.
   It returns an `UploadResult` (`token`, `file_name`, `content_type`, `size`); pass
