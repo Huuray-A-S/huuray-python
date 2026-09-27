@@ -214,7 +214,9 @@ def _wait(
 ) -> int:
     """Seconds to wait before asking again. Raises if that would pass ``max_wait``."""
     wait = DEFAULT_RETRY_AFTER if result.retry_after is None else max(MIN_WAIT, result.retry_after)
-    if _monotonic() + wait > deadline:
+    # Compared with the time left, never as now + wait: a Retry-After too large
+    # for a float would raise OverflowError there, where it must give up at once.
+    if wait > deadline - _monotonic():
         status_message = response.data.status_message
         last = f" Last status: {status_message}" if status_message else ""
         raise HuurayTimeoutError(

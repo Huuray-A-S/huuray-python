@@ -331,7 +331,9 @@ class TestANotReadyAnswer:
             ("+30", None),
             ("Wed, 21 Oct 2026 07:28:00 GMT", None),
             ("86400", 86400),
+            ("9" * 400, int("9" * 400)),
         ],
+        ids=lambda value: f"{len(str(value))}-digits" if len(str(value)) > 40 else None,
     )
     def test_reads_retry_after_as_whole_seconds_or_none(self, header, seconds):
         client, _ = make_client(not_ready(header))
@@ -620,6 +622,19 @@ class TestGetWhenReady:
             client.pdfs.get_when_ready(order_uid=ORDER_UID, max_wait=29.5)
         assert len(calls) == 1
 
+    @pytest.mark.parametrize(
+        "header", ["99999999999999999999", "9" * 400], ids=["past-int64", "past-float"]
+    )
+    def test_gives_up_at_once_on_a_retry_after_too_large_to_wait(self, clock, header):
+        # Past any int64, and past any float: never an OverflowError, never a sleep.
+        client, calls = make_client([not_ready(header)])
+        with pytest.raises(HuurayTimeoutError) as caught:
+            client.pdfs.get_when_ready(order_uid=ORDER_UID)
+        assert type(caught.value) is HuurayTimeoutError
+        assert caught.value.timeout == 600
+        assert clock.sleeps == []
+        assert len(calls) == 1
+
     def test_the_error_leaves_out_a_status_the_api_did_not_give(self, clock):
         client, _ = make_client([MockResponse(status=202, json={}, headers={"Retry-After": "30"})])
         with pytest.raises(HuurayTimeoutError) as caught:
@@ -713,6 +728,14 @@ class TestAsyncGetWhenReady:
         assert caught.value.timeout == 45
         assert async_clock.sleeps == [30]
         assert len(calls) == 2
+
+    async def test_gives_up_at_once_on_a_retry_after_too_large_for_a_float(self, async_clock):
+        client, calls = make_async_client([not_ready("9" * 400)])
+        async with client:
+            with pytest.raises(HuurayTimeoutError):
+                await client.pdfs.get_when_ready(order_uid=ORDER_UID)
+        assert async_clock.sleeps == []
+        assert len(calls) == 1
 
     async def test_rejects_a_bad_max_wait_before_sending(self, async_clock):
         client, calls = make_async_client([ready()])
