@@ -244,11 +244,11 @@ class PdfsResource(Resource):
         **The PDF is a bearer instrument**: it shows the redeemable code. Never
         log ``content``, and keep it no longer than you need it.
 
-        Retried like any read, on connection failures, 5xx and 429: the call
-        never changes the order. The API supports orders with at most 10
-        receivers and answers others with a 422, raised as
-        ``HuurayValidationError``; an unknown order or voucher is a 404, raised
-        as ``HuurayNotFoundError``. This client checks neither.
+        Retried like any read, on connection failures and on a 408, 425, 429,
+        500, 502, 503 or 504: the call never changes the order. The API supports
+        orders with at most 10 receivers and answers others with a 422, raised
+        as ``HuurayValidationError``; an unknown order or voucher is a 404,
+        raised as ``HuurayNotFoundError``. This client checks neither.
 
         A PDF can take a while to render and run to several MB, so build the
         client with a longer ``timeout`` for these calls, e.g. ``timeout=100.0``.
@@ -279,12 +279,15 @@ class PdfsResource(Resource):
         seconds, at least 1, or 30 without one, and every request is signed
         with a new nonce. Any 2xx other than 200 is treated like 202 (not
         ready); any non-2xx ends the wait with an exception, after the retries
-        any read gets on a 5xx or a 429. A 429 that outlives them raises
-        :class:`~huuray.HuurayRateLimitError`.
+        any read gets on a 408, 425, 429, 500, 502, 503 or 504. A 429 that
+        outlives them raises :class:`~huuray.HuurayRateLimitError`.
 
         :param max_wait: Seconds to keep asking, 10 minutes by default. When the
             next wait would pass it, :class:`~huuray.HuurayTimeoutError` is
-            raised, with the last status the API gave.
+            raised, with the last status the API gave. Only a wait after a 202
+            is checked against it: a wait between the retries of a single
+            request (backoff or ``Retry-After``) is never refused or shortened
+            for it, though the time it takes counts as time passed.
         """
         deadline = _deadline(max_wait)
         op = _operation(order_uid, voucher_id, pdf_template_uid, combine)

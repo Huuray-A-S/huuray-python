@@ -181,7 +181,8 @@ class HuurayRateLimitError(HuurayAPIError):
 
     A read is repeated for you: it waits ``retry_after`` seconds, at least 1,
     in place of the backoff. This error is raised when the retries are used up,
-    or at once when that wait is longer than the retry policy's ``max_delay``.
+    or at once when that wait (the ``Retry-After``, at least 1 second) is longer
+    than the retry policy's ``max_delay``.
     """
 
     def __init__(

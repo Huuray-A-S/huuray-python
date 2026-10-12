@@ -16,14 +16,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the PDF decoded to bytes. `ready` is `False` on a 202, the answer while the order is
   processed or a supplier code is pending, as on any 2xx other than 200, and
   `retry_after` is the `Retry-After` header in whole seconds. It is a read, retried
-  on connection failures, 5xx and 429. A 200 whose `Content` is not valid base64 raises
-  `HuurayConnectionError`, like any unreadable 2xx. The token needs the Search
-  permission; the API, not this client, enforces its limit of 10 receivers per order.
-  `pdf_template_uid` is the `uid` of a Downloadable PDF template.
+  on connection failures and on a 408, 425, 429, 500, 502, 503 or 504. A 200 whose
+  `Content` is not valid base64 raises `HuurayConnectionError`, like any unreadable
+  2xx. The token needs the Search permission; the API, not this client, enforces its
+  limit of 10 receivers per order. `pdf_template_uid` is the `uid` of a Downloadable
+  PDF template.
 - `pdfs.get_when_ready(..., max_wait=600.0)` on both clients repeats the call while
   the API answers 202, waiting `Retry-After` seconds (at least 1, or 30 without one),
   and raises `HuurayTimeoutError` when the next wait would pass `max_wait`, saying it
-  gave up waiting within `max_wait` and giving the last status.
+  gave up waiting within `max_wait` and giving the last status. Only a wait after a
+  202 is checked against `max_wait`: a wait between the retries of a single request
+  (backoff or `Retry-After`) is never refused or shortened for it, though the time it
+  takes counts as time passed.
 - `Content` and `content` are in `SECRET_FIELDS`: a gift card PDF shows the redeemable
   code. `redact()` shows bytes under such a key as their size, and `PdfDocument`
   shows `content=[N bytes]` in `repr()`.
@@ -64,15 +68,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `DeliveryPDFTemplateUid` without `DeliveryTemplateId` for a physical product, and
   raises the gift card PDF limit from 3 to 10 receivers.
 - `orders.create()` and `orders.create_sync()` send `pdf_template_uid` without
-  `template_id`: the `ValueError` that rejected it is removed from every order method.
-  For email delivery the PDF template is attached to the emails sent by `template_id`,
-  which must then be an email template. For a physical product (delivered by post
-  only) it is the template the gift cards are printed with, and `template_id` is not
-  required. The API decides, not this client. `recipients` is still required only when
-  `template_id` is set, and `send_reward()` still takes a required `template_id`.
+  `template_id`: the `ValueError` that rejected it is removed. For email delivery the
+  PDF template is attached to the emails sent by `template_id`, which must then be an
+  email template. For a physical product (delivered by post only) it is the template
+  the gift cards are printed with, and `template_id` is not required. The API decides,
+  not this client. `recipients` is still required only when `template_id` is set.
+  `send_reward()` is unchanged and still requires `template_id`: for a physical
+  product ordered with only a PDF template, use `orders.create()` or
+  `orders.create_sync()`.
 - A read answered 429 waits `Retry-After` seconds (at least 1) in place of the backoff
-  before it is repeated. A wait longer than `RetryOptions.max_delay` is not taken:
-  `HuurayRateLimitError` is raised at once, as it is when the retries are used up.
+  before it is repeated. When that wait (the `Retry-After`, at least 1 second) is
+  longer than `RetryOptions.max_delay` it is not taken: `HuurayRateLimitError` is
+  raised at once, as it is when the retries are used up. So with a `max_delay` below
+  1 second, a 429 that carries a `Retry-After` in whole seconds is never retried.
   Without a usable `Retry-After` the backoff applies, as before. A 429 used to be a
   plain `HuurayAPIError`.
 - `RetryOptions.max_delay` is clamped to 2147483.647 seconds (about 24.8 days), the
@@ -180,7 +188,8 @@ First release. Complete coverage of the Huuray API v4.
   `send_reward()` accept an optional `pdf_template_uid`, sent as
   `DeliveryPDFTemplateUid`. For email delivery the API attaches it to the emails sent
   by `template_id`, which must then be an email template; for a physical product
-  (delivered by post only) `template_id` is not required.
+  (delivered by post only) `template_id` is not required, except by `send_reward()`,
+  which always takes one.
 - `request()` — an escape hatch that signs any call.
 - Read-only CLI: `balance`, `catalogue`, `templates`, `stock`, `rates`, `search`.
 - The CLI's `templates` command lists PDF templates as well as delivery templates,

@@ -127,6 +127,8 @@ huuray.orders.create(
 )
 ```
 
+`send_reward()` always takes a `template_id`. For a physical product (delivered by post only) ordered with only a PDF template, use `orders.create()` or `orders.create_sync()` with `pdf_template_uid` and no `template_id`.
+
 ## Attaching a purchase order
 
 Upload the file first, then pass its token to the order:
@@ -167,7 +169,7 @@ else:
     ...  # a 202: ask again after result.retry_after seconds
 ```
 
-A 202 is not success: the order is still being processed, or a supplier has not delivered a code yet, so `ready` is `False` and `documents` is empty. `pdfs.get_when_ready()` asks again for you, waiting `Retry-After` seconds (at least 1, or 30 without one), and raises `HuurayTimeoutError` when the next wait would pass `max_wait` (10 minutes by default). Any 2xx other than 200 is treated like 202 (not ready); any non-2xx ends the wait with an exception, after the retries any read gets on a 5xx or a 429.
+A 202 is not success: the order is still being processed, or a supplier has not delivered a code yet, so `ready` is `False` and `documents` is empty. `pdfs.get_when_ready()` asks again for you, waiting `Retry-After` seconds (at least 1, or 30 without one), and raises `HuurayTimeoutError` when the next wait would pass `max_wait` (10 minutes by default). Any 2xx other than 200 is treated like 202 (not ready); any non-2xx ends the wait with an exception, after the retries any read gets on a 408, 425, 429, 500, 502, 503 or 504. Only a wait after a 202 is checked against `max_wait`: a wait between the retries of a single request (backoff or `Retry-After`) is never refused or shortened for it, though the time it takes counts as time passed.
 
 **The PDF is a bearer instrument**: it shows the redeemable code, so whoever holds the file holds the value. Never log `content`, and keep it no longer than you need it. `repr()` and `redact()` show only its size.
 
@@ -219,9 +221,9 @@ Anything other than `HuurayNotFoundError` from the lookup means the lookup itsel
 
 This is why `send_reward()` requires a `ref_id` even though the API treats it as optional: without one, an order that times out cannot be looked up.
 
-Reads *are* retried, with backoff and jitter, on connection failures, 5xx and 429.
+Reads *are* retried, with backoff and jitter, on connection failures and on a 408, 425, 429, 500, 502, 503 or 504.
 
-A 429 means the rate limit for your IP address was exceeded and the request was not processed. A read waits the `Retry-After` seconds the API names (at least 1) in place of the backoff. When that is longer than the retry policy's `max_delay`, or the retries are used up, it raises `HuurayRateLimitError`, whose `retry_after` holds those seconds. An order, a resend, a cancel or an upload is not repeated for you on a 429 either: it raises `HuurayRateLimitError`, never `HuurayIndeterminateOrderError`, and the same request is safe to send again after waiting.
+A 429 means the rate limit for your IP address was exceeded and the request was not processed. A read waits the `Retry-After` seconds the API names (at least 1) in place of the backoff. When that wait (the `Retry-After`, at least 1 second) is longer than the retry policy's `max_delay`, or the retries are used up, it raises `HuurayRateLimitError`, whose `retry_after` holds the `Retry-After` seconds. So with a `max_delay` below 1 second, a 429 that carries a `Retry-After` in whole seconds is never retried. An order, a resend, a cancel or an upload is not repeated for you on a 429 either: it raises `HuurayRateLimitError`, never `HuurayIndeterminateOrderError`, and the same request is safe to send again after waiting.
 
 ### 3. Synchronous and asynchronous orders are different calls
 

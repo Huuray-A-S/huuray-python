@@ -17,9 +17,9 @@ Note that five of the retryable operations are POSTs. They are POSTs because
 they take a request body, not because they change anything.
 
 A ``429`` names its own wait in ``Retry-After``. A retryable operation waits
-that long, at least 1 second, in place of the backoff. When that is longer than
-``max_delay`` it does not wait: the error is raised at once, for the caller to
-decide.
+that long, at least 1 second, in place of the backoff. When that wait (the
+``Retry-After``, at least 1 second) is longer than ``max_delay`` it is not
+taken: the error is raised at once, for the caller to decide.
 """
 
 from __future__ import annotations

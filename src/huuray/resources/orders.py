@@ -517,6 +517,10 @@ class OrdersResource(Resource):
         Performs exactly one ``POST /v4/Order`` with ``Sync: False`` and
         ``Quantity: 1``.
 
+        ``template_id`` is required here: Huuray delivers the gift card with
+        that template. For a physical product ordered with only a PDF template,
+        use :meth:`create` or :meth:`create_sync`.
+
         ``ref_id`` is required here even though the API treats it as optional,
         and is never generated for you: a generated key is not in your system,
         so it could not be used to reconcile an order whose outcome is unknown.
