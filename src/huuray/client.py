@@ -84,10 +84,16 @@ T = TypeVar("T")
 
 _UNREADABLE = object()
 
+
 # The sleeps a retry waits with. They are looked up on every call, so a test
-# replaces them instead of waiting.
-_sleep = time.sleep
-_async_sleep = asyncio.sleep
+# replaces them instead of waiting. Each looks up time.sleep or asyncio.sleep
+# when it is called, so a caller's own patch of those still sees the waits.
+def _sleep(seconds: float) -> None:
+    time.sleep(seconds)
+
+
+async def _async_sleep(seconds: float) -> None:
+    await asyncio.sleep(seconds)
 
 
 def _with_note(message: str, op: Operation) -> str:

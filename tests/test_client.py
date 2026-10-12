@@ -28,7 +28,6 @@ from huuray import (
     Recipient,
     RetryOptions,
 )
-from huuray import client as client_module
 from huuray.auth import sign_request
 from huuray.resources._base import Operation
 
@@ -719,9 +718,18 @@ class TestRateLimitMapping:
 class TestRateLimitedReads:
     """A read answered 429 waits ``Retry-After`` instead of the backoff, within ``max_delay``."""
 
-    def test_waits_with_time_sleep_and_asyncio_sleep_by_default(self):
-        assert client_module._sleep is time.sleep
-        assert client_module._async_sleep is asyncio.sleep
+    def test_every_wait_goes_through_time_sleep_as_the_caller_patched_it(self, monkeypatch):
+        # Looked up when the wait is taken: a caller who patches time.sleep in
+        # their own tests still sees the waits, and never waits for real.
+        monkeypatch.setattr("huuray.client.backoff_delay", lambda *_a, **_k: BACKOFF)
+        waited: list[float] = []
+        monkeypatch.setattr(time, "sleep", waited.append)
+        client, calls = make_client(
+            [rate_limited("2"), MockResponse(status=503), BALANCES], retry=RETRYING
+        )
+        client.balances.list()
+        assert waited == [2, BACKOFF]
+        assert len(calls) == 3
 
     def test_waits_retry_after_instead_of_the_backoff_and_signs_again(self, sleeps):
         client, calls = make_client([rate_limited("2"), BALANCES], retry=RETRYING)
@@ -856,6 +864,24 @@ class TestRateLimitedWrites:
 
 
 class TestAsyncRateLimitedReads:
+    async def test_every_wait_goes_through_asyncio_sleep_as_the_caller_patched_it(
+        self, monkeypatch
+    ):
+        monkeypatch.setattr("huuray.client.backoff_delay", lambda *_a, **_k: BACKOFF)
+        waited: list[float] = []
+
+        async def patched_sleep(seconds: float) -> None:
+            waited.append(seconds)
+
+        monkeypatch.setattr(asyncio, "sleep", patched_sleep)
+        client, calls = make_async_client(
+            [rate_limited("2"), MockResponse(status=503), BALANCES], retry=RETRYING
+        )
+        async with client:
+            await client.balances.list()
+        assert waited == [2, BACKOFF]
+        assert len(calls) == 3
+
     async def test_awaits_retry_after_instead_of_the_backoff_and_signs_again(self, async_sleeps):
         client, calls = make_async_client([rate_limited("2"), BALANCES], retry=RETRYING)
         async with client:
