@@ -450,6 +450,22 @@ class TestRequestConformanceGate:
             "pdf-template-uid-1"
         ] * 3
 
+    def test_an_order_with_a_pdf_template_and_no_delivery_template_conforms(self):
+        # The harness always names a delivery template. The specification also
+        # allows the PDF template alone, for a physical product delivered by post.
+        client, captured = make_client(MockResponse(status=200, json={}))
+        with client:
+            client.orders.create(
+                product_token="tok",
+                value=5000,
+                currency="DKK",
+                quantity=1,
+                pdf_template_uid="pdf-template-uid-1",
+            )
+        assert check_request(SPEC["paths"]["/v4/Order"]["post"], captured[0]) == []
+        assert captured[0].body["DeliveryPDFTemplateUid"] == "pdf-template-uid-1"
+        assert "DeliveryTemplateId" not in captured[0].body
+
     def test_every_order_request_in_the_harness_carries_the_invoice_fields(self, calls):
         # The same pin for the five optional invoice fields: each is sent by all
         # three order calls, so its name and type are checked against OrderRequest.

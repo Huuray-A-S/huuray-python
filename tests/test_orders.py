@@ -246,7 +246,7 @@ class TestSendReward:
 
 
 class TestPdfTemplateDelivery:
-    """``DeliveryPDFTemplateUid``: optional, and only meaningful with a delivery template."""
+    """``DeliveryPDFTemplateUid``: optional, with a delivery template or without one."""
 
     def test_create_sends_the_pdf_template_uid_alongside_the_delivery_template(self):
         client, calls = make_client(MockResponse(json={"OrderUID": "x"}))
@@ -317,21 +317,40 @@ class TestPdfTemplateDelivery:
         assert "DeliveryPDFTemplateUid" not in calls[0].body
 
     @pytest.mark.parametrize("method", ["create", "create_sync"])
-    def test_rejects_a_pdf_template_without_a_delivery_template_before_sending(self, method):
+    def test_sends_a_pdf_template_without_a_delivery_template_as_given(self, method):
+        # A physical product, delivered by post only, is printed with the PDF
+        # template and needs no delivery template. The API decides, not this client.
         client, calls = make_client(MockResponse(json={"OrderUID": "x"}))
-        with pytest.raises(
-            ValueError, match="template_id is required when pdf_template_uid is set"
-        ):
-            getattr(client.orders, method)(**BASE, pdf_template_uid="pdf-uid-test-1")
-        assert calls == []
-
-    def test_the_rejection_says_the_api_needs_an_email_template(self):
-        client, _ = make_client()
-        with pytest.raises(ValueError, match="email template"):
-            client.orders.create(**BASE, pdf_template_uid="pdf-uid-test-1")
+        getattr(client.orders, method)(**BASE, pdf_template_uid="pdf-uid-test-1")
+        assert len(calls) == 1
+        assert calls[0].body["DeliveryPDFTemplateUid"] == "pdf-uid-test-1"
+        assert "DeliveryTemplateId" not in calls[0].body
+        assert "Recipients" not in calls[0].body
 
     @pytest.mark.parametrize("method", ["create", "create_sync"])
-    def test_checks_only_that_template_id_is_present_not_what_kind_of_template_it_is(self, method):
+    def test_recipients_stay_unchecked_without_a_delivery_template(self, method):
+        # Required, and counted, only when template_id is set: 2 for a quantity of 5.
+        client, calls = make_client(MockResponse(json={"OrderUID": "x"}))
+        getattr(client.orders, method)(
+            **{**BASE, "quantity": 5},
+            pdf_template_uid="pdf-uid-test-1",
+            recipients=[Recipient(name="A"), Recipient(name="B")],
+        )
+        assert calls[0].body["Recipients"] == [{"Name": "A"}, {"Name": "B"}]
+        assert calls[0].body["DeliveryPDFTemplateUid"] == "pdf-uid-test-1"
+        assert "DeliveryTemplateId" not in calls[0].body
+
+    @pytest.mark.parametrize("method", ["create", "create_sync"])
+    def test_a_pdf_template_does_not_lift_the_recipients_rule_of_a_delivery_template(self, method):
+        client, calls = make_client()
+        with pytest.raises(ValueError, match="recipients is required when template_id is set"):
+            getattr(client.orders, method)(
+                **BASE, template_id=42, pdf_template_uid="pdf-uid-test-1"
+            )
+        assert calls == []
+
+    @pytest.mark.parametrize("method", ["create", "create_sync"])
+    def test_does_not_check_what_kind_of_template_the_delivery_template_is(self, method):
         # The client cannot tell an email template from an SMS template by its
         # id, so it must not guess: a phone-only recipient is still sent, and
         # rejecting a non-email template is left to the API.
@@ -696,22 +715,26 @@ class TestAsyncOrders:
         assert len(calls) == 2
         assert all("DeliveryPDFTemplateUid" not in call.body for call in calls)
 
-    async def test_rejects_a_pdf_template_without_a_delivery_template_before_sending(self):
+    async def test_sends_a_pdf_template_without_a_delivery_template_as_given(self):
         client, calls = make_async_client(MockResponse(json={"OrderUID": "x"}))
         async with client:
-            with pytest.raises(
-                ValueError, match="template_id is required when pdf_template_uid is set"
-            ):
-                await client.orders.create(**BASE, pdf_template_uid="pdf-uid-test-1")
-            with pytest.raises(
-                ValueError, match="template_id is required when pdf_template_uid is set"
-            ):
-                await client.orders.create_sync(**BASE, pdf_template_uid="pdf-uid-test-1")
+            await client.orders.create(**BASE, pdf_template_uid="pdf-uid-test-1")
+            await client.orders.create_sync(**BASE, pdf_template_uid="pdf-uid-test-1")
+        assert len(calls) == 2
+        assert [call.body["DeliveryPDFTemplateUid"] for call in calls] == ["pdf-uid-test-1"] * 2
+        assert all("DeliveryTemplateId" not in call.body for call in calls)
+        assert all("Recipients" not in call.body for call in calls)
+
+    async def test_a_pdf_template_does_not_lift_the_recipients_rule_of_a_delivery_template(self):
+        client, calls = make_async_client()
+        async with client:
+            with pytest.raises(ValueError, match="recipients is required when template_id is set"):
+                await client.orders.create(
+                    **BASE, template_id=42, pdf_template_uid="pdf-uid-test-1"
+                )
         assert calls == []
 
-    async def test_checks_only_that_template_id_is_present_not_what_kind_of_template_it_is(
-        self,
-    ):
+    async def test_does_not_check_what_kind_of_template_the_delivery_template_is(self):
         client, calls = make_async_client(MockResponse(json={"OrderUID": "x"}))
         order: dict[str, Any] = {
             **BASE,

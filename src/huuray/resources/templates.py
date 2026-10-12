@@ -31,8 +31,9 @@ class Template:
 class PdfTemplate:
     """A PDF template — delivers the codes as a document attached to an email."""
 
-    #: Pass this as ``pdf_template_uid`` when ordering, together with the
-    #: ``template_id`` of an email template.
+    #: Pass this as ``pdf_template_uid`` when ordering: together with the
+    #: ``template_id`` of an email template for email delivery, or without one
+    #: for a physical product (delivered by post only).
     uid: str | None
     name: str | None
     #: PDF template type, as named by the API.

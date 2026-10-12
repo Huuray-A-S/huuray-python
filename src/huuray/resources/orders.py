@@ -193,13 +193,6 @@ def _order_operation(
             f"received {quantity}. Use orders.create() for larger orders."
         )
 
-    if pdf_template_uid is not None and template_id is None:
-        raise ValueError(
-            "template_id is required when pdf_template_uid is set — the API attaches the PDF "
-            "template to the emails sent by the delivery template, which must be an email "
-            "template."
-        )
-
     if template_id is not None:
         count = len(recipients) if recipients is not None else 0
         if count == 0:
@@ -403,13 +396,15 @@ class OrdersResource(Resource):
         :param template_id: Delivery template id from ``templates.list()``.
             Omit for no delivery.
         :param pdf_template_uid: Optional PDF template uid from
-            ``templates.list().pdf_templates``, attached as a document to the
-            emails sent by ``template_id``. Requires ``template_id``, which the
-            API requires to be an email template. The PDF template must also be
+            ``templates.list().pdf_templates``. For email delivery it is attached
+            as a document to the emails sent by ``template_id``, which must then
+            be an email template. For a physical product (delivered by post
+            only) it is the template the gift cards are printed with, and
+            ``template_id`` is not required. The PDF template must also be
             available for the ordered product's brand and country (``brand_name``
             / ``country`` on the PDF template, where ``None`` means any); otherwise
             the API rejects the order with a 422, raised as
-            ``HuurayValidationError``. This client does not pre-check that.
+            ``HuurayValidationError``. This client pre-checks none of that.
         :param recipients: Required when ``template_id`` is set. The count must
             be either 1 or exactly ``quantity``.
         :param additional_reference: Shown on the invoice.

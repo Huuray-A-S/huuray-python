@@ -58,6 +58,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   429 response with a `Retry-After` header on all eleven operations, allows
   `DeliveryPDFTemplateUid` without `DeliveryTemplateId` for a physical product, and
   raises the gift card PDF limit from 3 to 10 receivers.
+- `orders.create()` and `orders.create_sync()` send `pdf_template_uid` without
+  `template_id`: the `ValueError` that rejected it is removed from every order method.
+  For email delivery the PDF template is attached to the emails sent by `template_id`,
+  which must then be an email template. For a physical product (delivered by post
+  only) it is the template the gift cards are printed with, and `template_id` is not
+  required. The API decides, not this client. `recipients` is still required only when
+  `template_id` is set, and `send_reward()` still takes a required `template_id`.
 
 ### Confirmed against the live API
 
@@ -154,8 +161,9 @@ First release. Complete coverage of the Huuray API v4.
   `brand_name`) alongside `templates`, so an account whose templates are all PDF
   templates does not read as empty. `orders.create()`, `orders.create_sync()` and
   `send_reward()` accept an optional `pdf_template_uid`, sent as
-  `DeliveryPDFTemplateUid`. It is rejected before any request unless `template_id`
-  is also set; the API requires that template to be an email template.
+  `DeliveryPDFTemplateUid`. For email delivery the API attaches it to the emails sent
+  by `template_id`, which must then be an email template; for a physical product
+  (delivered by post only) `template_id` is not required.
 - `request()` — an escape hatch that signs any call.
 - Read-only CLI: `balance`, `catalogue`, `templates`, `stock`, `rates`, `search`.
 - The CLI's `templates` command lists PDF templates as well as delivery templates,
