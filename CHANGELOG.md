@@ -52,6 +52,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   names, and that a binary part is sent as a file with a filename. It fails closed on
   a multipart shape it does not understand.
 
+### Changed
+
+- The vendored specification is the one published on 9 October 2026. It documents a
+  429 response with a `Retry-After` header on all eleven operations, allows
+  `DeliveryPDFTemplateUid` without `DeliveryTemplateId` for a physical product, and
+  raises the gift card PDF limit from 3 to 10 receivers.
+
 ### Confirmed against the live API
 
 Every assumption the specification left open has been verified with real calls
