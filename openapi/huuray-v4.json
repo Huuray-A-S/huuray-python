@@ -2,7 +2,7 @@
   "openapi": "3.0.4",
   "info": {
     "title": "Huuray API",
-    "description": "Huuray API for B2B customers (last updated september 2026)",
+    "description": "Huuray API for B2B customers (last updated 9 october 2026 17:40 UTC)",
     "contact": {
       "name": "Support",
       "email": "tech@huuray.com"
@@ -64,6 +64,24 @@
           },
           "403": {
             "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Response"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too Many Requests. The rate limit for your IP address was exceeded and the request was not processed. Wait the number of seconds given in the Retry-After header, then retry.",
+            "headers": {
+              "Retry-After": {
+                "description": "The number of seconds to wait before retrying.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
@@ -191,6 +209,24 @@
               }
             }
           },
+          "429": {
+            "description": "Too Many Requests. The rate limit for your IP address was exceeded and the request was not processed. Wait the number of seconds given in the Retry-After header, then retry.",
+            "headers": {
+              "Retry-After": {
+                "description": "The number of seconds to wait before retrying.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Response"
+                }
+              }
+            }
+          },
           "500": {
             "description": "Internal Server Error",
             "content": {
@@ -282,6 +318,24 @@
           },
           "404": {
             "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Response"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too Many Requests. The rate limit for your IP address was exceeded and the request was not processed. Wait the number of seconds given in the Retry-After header, then retry.",
+            "headers": {
+              "Retry-After": {
+                "description": "The number of seconds to wait before retrying.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
@@ -386,6 +440,24 @@
           },
           "404": {
             "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Response"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too Many Requests. The rate limit for your IP address was exceeded and the request was not processed. Wait the number of seconds given in the Retry-After header, then retry.",
+            "headers": {
+              "Retry-After": {
+                "description": "The number of seconds to wait before retrying.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
@@ -523,6 +595,24 @@
               }
             }
           },
+          "429": {
+            "description": "Too Many Requests. The rate limit for your IP address was exceeded and the request was not processed. Wait the number of seconds given in the Retry-After header, then retry.",
+            "headers": {
+              "Retry-After": {
+                "description": "The number of seconds to wait before retrying.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Response"
+                }
+              }
+            }
+          },
           "500": {
             "description": "Internal Server Error",
             "content": {
@@ -547,7 +637,7 @@
           "Pdf"
         ],
         "summary": "Used to get the giftcard PDF of a previous order",
-        "description": "Returns the giftcard PDF of each voucher on the order (or of a single voucher), base64 encoded, or one combined PDF when Combine is set. The PDF contains the redeemable codes. Without PDFTemplateUid, the PDF template attached to the delivery email at order time (DeliveryPDFTemplateUid) is used, so the document is the one the recipient gets by email; an order without one is rejected with a 422. With PDFTemplateUid, any PDF template from the Template endpoint can be used, as long as it is available for the ordered product's brand and country, otherwise the request is rejected with a 422. Cancelled vouchers have no PDF. Only orders with at most 3 receivers are supported, larger orders are rejected with a 422. An order that is still being processed, or a voucher whose code the supplier has not delivered yet, is answered with a 202 and a Retry-After header (in seconds): ask again after that",
+        "description": "Returns the giftcard PDF of each voucher on the order (or of a single voucher), base64 encoded, or one combined PDF when Combine is set. The PDF contains the redeemable codes. Without PDFTemplateUid, the PDF template attached to the delivery email at order time (DeliveryPDFTemplateUid) is used, so the document is the one the recipient gets by email; an order without one is rejected with a 422. With PDFTemplateUid, any Downloadable PDF template from the Template endpoint can be used, as long as it is available for the ordered product's brand and country, otherwise the request is rejected with a 422. Cancelled vouchers have no PDF. Only orders with at most 10 receivers are supported, larger orders are rejected with a 422. An order that is still being processed, or a voucher whose code the supplier has not delivered yet, is answered with a 202 and a Retry-After header (in seconds): ask again after that",
         "parameters": [
           {
             "name": "X-API-NONCE",
@@ -634,6 +724,24 @@
           },
           "422": {
             "description": "Unprocessable Content",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Response"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too Many Requests. The rate limit for your IP address was exceeded and the request was not processed. Wait the number of seconds given in the Retry-After header, then retry.",
+            "headers": {
+              "Retry-After": {
+                "description": "The number of seconds to wait before retrying.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
@@ -761,6 +869,24 @@
               }
             }
           },
+          "429": {
+            "description": "Too Many Requests. The rate limit for your IP address was exceeded and the request was not processed. Wait the number of seconds given in the Retry-After header, then retry.",
+            "headers": {
+              "Retry-After": {
+                "description": "The number of seconds to wait before retrying.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Response"
+                }
+              }
+            }
+          },
           "500": {
             "description": "Internal Server Error",
             "content": {
@@ -852,6 +978,24 @@
           },
           "404": {
             "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Response"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too Many Requests. The rate limit for your IP address was exceeded and the request was not processed. Wait the number of seconds given in the Retry-After header, then retry.",
+            "headers": {
+              "Retry-After": {
+                "description": "The number of seconds to wait before retrying.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
@@ -969,6 +1113,24 @@
               }
             }
           },
+          "429": {
+            "description": "Too Many Requests. The rate limit for your IP address was exceeded and the request was not processed. Wait the number of seconds given in the Retry-After header, then retry.",
+            "headers": {
+              "Retry-After": {
+                "description": "The number of seconds to wait before retrying.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Response"
+                }
+              }
+            }
+          },
           "500": {
             "description": "Internal Server Error",
             "content": {
@@ -1051,6 +1213,24 @@
           },
           "404": {
             "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Response"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too Many Requests. The rate limit for your IP address was exceeded and the request was not processed. Wait the number of seconds given in the Retry-After header, then retry.",
+            "headers": {
+              "Retry-After": {
+                "description": "The number of seconds to wait before retrying.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
@@ -1152,6 +1332,24 @@
           },
           "422": {
             "description": "Unprocessable Content",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Response"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too Many Requests. The rate limit for your IP address was exceeded and the request was not processed. Wait the number of seconds given in the Retry-After header, then retry.",
+            "headers": {
+              "Retry-After": {
+                "description": "The number of seconds to wait before retrying.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
@@ -1569,7 +1767,7 @@
           },
           "DeliveryPDFTemplateUid": {
             "type": "string",
-            "description": "An optional PDF template (see the Template endpoint) to attach as a document to the emails sent by DeliveryTemplateId. Requires DeliveryTemplateId to be an email template",
+            "description": "An optional PDF template (see the Template endpoint). For email delivery it is attached as a document to the emails sent by DeliveryTemplateId, which must then be an email template. For a physical product (delivered by post only) it is the template the gift cards are printed with, and DeliveryTemplateId is not required",
             "nullable": true
           },
           "DeliveryDatetime": {
@@ -1794,7 +1992,7 @@
           },
           "PDFTemplateUid": {
             "type": "string",
-            "description": "The Uid of a PDF template from the Template endpoint. When omitted, the PDF template attached to the delivery email at order time (DeliveryPDFTemplateUid) is used, and the document is the one the recipient gets by email",
+            "description": "The Uid of a Downloadable PDF template from the Template endpoint. When omitted, the PDF template attached to the delivery email at order time (DeliveryPDFTemplateUid) is used, and the document is the one the recipient gets by email",
             "nullable": true
           },
           "Combine": {
