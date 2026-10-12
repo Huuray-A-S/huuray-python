@@ -524,7 +524,7 @@ class TestErrors:
             ),
             (
                 422,
-                "The PDF can only be fetched for orders with at most 3 receivers",
+                "The PDF can only be fetched for orders with at most 10 receivers",
                 HuurayValidationError,
             ),
             (401, "Restricted Access", HuurayAuthError),

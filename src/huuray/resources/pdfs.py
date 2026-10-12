@@ -100,7 +100,7 @@ def _operation(
         method="POST",
         path="/v4/Pdf",
         # Sent exactly as given. The API, not this client, checks the UIDs and
-        # that the order has at most 3 receivers.
+        # that the order has at most 10 receivers.
         body=compact(
             {
                 "OrderUID": order_uid,
@@ -245,7 +245,7 @@ class PdfsResource(Resource):
         log ``content``, and keep it no longer than you need it.
 
         Retried like any read, on connection failures, 5xx and 429: the call
-        never changes the order. The API supports orders with at most 3
+        never changes the order. The API supports orders with at most 10
         receivers and answers others with a 422, raised as
         ``HuurayValidationError``; an unknown order or voucher is a 404, raised
         as ``HuurayNotFoundError``. This client checks neither.
@@ -255,8 +255,9 @@ class PdfsResource(Resource):
 
         :param order_uid: The order's ``order_uid``.
         :param voucher_id: One voucher of the order. Omit for all of them.
-        :param pdf_template_uid: A ``uid`` from ``templates.list().pdf_templates``.
-            Omit for the PDF template the order's delivery email was sent with.
+        :param pdf_template_uid: The ``uid`` of a Downloadable PDF template from
+            ``templates.list().pdf_templates``. Omit for the PDF template the
+            order's delivery email was sent with.
         :param combine: ``True`` for one PDF holding every selected voucher.
             Omitted, the API returns one PDF per voucher.
         """

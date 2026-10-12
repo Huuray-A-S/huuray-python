@@ -171,7 +171,7 @@ A 202 is not success: the order is still being processed, or a supplier has not 
 
 **The PDF is a bearer instrument**: it shows the redeemable code, so whoever holds the file holds the value. Never log `content`, and keep it no longer than you need it. `repr()` and `redact()` show only its size.
 
-Your API token needs the **Search** permission. The API serves orders with at most 3 receivers and answers larger ones with a 422, raised as `HuurayValidationError`; this client does not check. A PDF can take a while to render and run to several MB, so give these calls a longer timeout, e.g. a client built with `timeout=100.0`. The client sets no limit on the size of a response; Huuray advises allowing at least 20 MB.
+Your API token needs the **Search** permission. The API serves orders with at most 10 receivers and answers larger ones with a 422, raised as `HuurayValidationError`; this client does not check. A PDF can take a while to render and run to several MB, so give these calls a longer timeout, e.g. a client built with `timeout=100.0`. The client sets no limit on the size of a response; Huuray advises allowing at least 20 MB.
 
 ## Seven things worth knowing
 
