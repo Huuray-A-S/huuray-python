@@ -166,9 +166,8 @@ on 2026-08-15, unless another date is given:
   which is the only time it is checked.
 - The templates docs no longer promise a 404 for an account without email or SMS
   templates; see the 2026-09-16 observation above.
-- CONTRIBUTING, `scripts/fetch_spec.py` and the spec-drift workflow no longer say a
-  spec change always opens a pull request: without a `SPEC_DRIFT_TOKEN` secret,
-  Actions may not create one and the run fails instead.
+- CONTRIBUTING, `scripts/fetch_spec.py` and the spec-drift workflow say what the job
+  does: a spec change opens an issue with the diff, not a pull request.
 
 ## [0.1.0] — unreleased
 

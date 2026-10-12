@@ -1,13 +1,12 @@
 name: Spec drift
 
-# Re-downloads the live v4 specification and flags any change: it opens a pull
-# request when the SPEC_DRIFT_TOKEN secret is configured, and otherwise the run
-# fails (see "Open a pull request" below).
+# Re-downloads the live v4 specification. When it differs from the vendored copy,
+# the job opens an issue (or comments on the one already open) with the diff and
+# the result of running the suite against the new spec.
 #
-# This is the early-warning system for API changes: because the conformance gates
-# validate every request against the vendored spec, a diff here is the first sign
-# that a field, an endpoint, or a schema moved. Review every one of these changes —
-# do not merge on green alone.
+# This is the early-warning system for API changes: a diff here is the first sign
+# that a field, an endpoint, or a schema moved. The job does not change the
+# repository: syncing the spec and adapting the client is done by hand.
 
 on:
   schedule:
@@ -15,8 +14,8 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
+  issues: write
 
 jobs:
   check:
@@ -52,37 +51,54 @@ jobs:
         continue-on-error: true
         run: pytest
 
-      - name: Open a pull request
+      - name: Open or update an issue
         if: steps.diff.outputs.changed == 'true'
-        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
-        with:
-          # SPEC_DRIFT_TOKEN should be a fine-grained PAT (contents + pull
-          # requests: write). Two reasons the default token is not enough:
-          # org repos block Actions-created PRs unless a setting is flipped,
-          # and PRs opened with GITHUB_TOKEN trigger no ci.yml run at all —
-          # the drift PR would show zero checks. Without the secret this falls
-          # back to GITHUB_TOKEN, which that org setting stops from opening the
-          # PR: a detected change then fails this step, and the run, instead.
-          token: ${{ secrets.SPEC_DRIFT_TOKEN || github.token }}
-          branch: spec-drift
-          title: 'The Huuray v4 specification changed'
-          commit-message: 'chore: sync openapi/huuray-v4.json with the live spec'
-          labels: spec-drift
-          body: |
-            The live v4 specification differs from the vendored copy.
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          SUITE: ${{ steps.verify.outcome }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          TITLE: The Huuray v4 specification changed
+        run: |
+          # The marker names the spec that was downloaded, so a later run that sees
+          # the same change again does not repeat itself on the issue.
+          marker="spec-sha256: $(sha256sum openapi/huuray-v4.json | cut -d' ' -f1)"
+          body="$RUNNER_TEMP/spec-drift.md"
+          {
+            echo 'The live v4 specification differs from the vendored copy in `openapi/huuray-v4.json`.'
+            echo
+            echo "**Suite against the new spec: ${SUITE}** ([workflow run](${RUN_URL}))"
+            echo
+            echo '- `success`: the change is backwards compatible with the current client. Still read the diff: a new endpoint fails the coverage gate, and a new field may be worth exposing.'
+            echo '- `failure`: the change breaks something. The conformance gates are doing their job: work out what moved.'
+            echo
+            echo 'Checklist:'
+            echo
+            echo '- [ ] Read the specification diff'
+            echo '- [ ] New endpoints have SDK methods, or the coverage gate is failing for a reason we accept'
+            echo '- [ ] Removed or renamed fields are handled, and the change is noted in `CHANGELOG.md`'
+            echo '- [ ] `info.version` is still `v4`: this client targets v4 only'
+            echo '- [ ] The new spec is vendored and this issue is closed'
+            echo
+            echo '<details><summary>Specification diff</summary>'
+            echo
+            echo '```diff'
+            git diff --no-color -- openapi/huuray-v4.json | head -c 50000
+            echo
+            echo '```'
+            echo
+            echo '</details>'
+            echo
+            echo "<!-- ${marker} -->"
+          } > "$body"
 
-            **Suite against the new spec: ${{ steps.verify.outcome }}**
+          existing="$(gh issue list --state open --limit 100 --json number,title --jq 'map(select(.title == env.TITLE)) | .[0].number // empty')"
 
-            - `success` — the change is backwards compatible with the current client.
-              Still read the diff: a new endpoint will fail the coverage gate, and a
-              new field may be worth exposing.
-            - `failure` — the change breaks something. The conformance gates are doing
-              their job; work out what moved before merging.
-
-            Checklist:
-
-            - [ ] Read the specification diff
-            - [ ] New endpoints have SDK methods on **both** the sync and async clients, or the coverage gate is failing for a reason we accept
-            - [ ] Removed or renamed fields are handled, and the change is noted in `CHANGELOG.md`
-            - [ ] The conformance validator still understands every schema shape it is given — it fails closed, so a new `allOf` wrapper means `validate()` needs extending
-            - [ ] `info.version` is still `v4` — this client targets v4 only
+          if [ -z "$existing" ]; then
+            gh label create spec-drift --color D93F0B --description 'The live v4 specification changed' 2>/dev/null || true
+            gh issue create --title "$TITLE" --label spec-drift --body-file "$body" || gh issue create --title "$TITLE" --body-file "$body"
+          elif gh issue view "$existing" --json body,comments --jq '[.body, .comments[].body] | join(" ")' | grep -qF "$marker"; then
+            echo "Issue #${existing} already describes this change."
+          else
+            gh issue comment "$existing" --body-file "$body"
+          fi
