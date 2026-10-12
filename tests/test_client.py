@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import re
+import time
+from typing import Any, Callable
 
 import httpx
 import pytest
@@ -17,12 +20,15 @@ from huuray import (
     HuurayConnectionError,
     HuurayIndeterminateOrderError,
     HuurayNotFoundError,
+    HuurayRateLimitError,
     HuurayServerError,
     HuurayTimeoutError,
     HuurayValidationError,
     RawResponse,
+    Recipient,
     RetryOptions,
 )
+from huuray import client as client_module
 from huuray.auth import sign_request
 from huuray.resources._base import Operation
 
@@ -31,6 +37,8 @@ from .helpers import (
     RecordingTransport,
     make_async_client,
     make_client,
+    rate_limited,
+    record_retry_sleeps,
 )
 
 
@@ -440,6 +448,7 @@ class TestErrorMapping:
             (403, HuurayAuthError),
             (404, HuurayNotFoundError),
             (422, HuurayValidationError),
+            (429, HuurayRateLimitError),
             (500, HuurayServerError),
             (400, HuurayAPIError),
         ],
@@ -581,6 +590,349 @@ class TestRetryPolicy:
         )
         client.balances.list()
         assert len(transport.calls) == 2, "the default retry policy must retry a read"
+
+
+#: What the jittered backoff is replaced with, to tell it from a ``Retry-After``.
+BACKOFF = 0.125
+
+#: Two retries, waiting at most the default ``max_delay`` of 4 seconds.
+RETRYING = RetryOptions(max_retries=2)
+
+BALANCES = MockResponse(json={"Balances": []})
+
+
+@pytest.fixture
+def sleeps(monkeypatch: pytest.MonkeyPatch) -> list[float]:
+    """The waits between the sync client's attempts, recorded instead of slept."""
+    monkeypatch.setattr("huuray.client.backoff_delay", lambda *_a, **_k: BACKOFF)
+    return record_retry_sleeps(monkeypatch, awaited=False)
+
+
+@pytest.fixture
+def async_sleeps(monkeypatch: pytest.MonkeyPatch) -> list[float]:
+    """The same for the async client, failing if it blocks instead of awaiting."""
+    monkeypatch.setattr("huuray.client.backoff_delay", lambda *_a, **_k: BACKOFF)
+    return record_retry_sleeps(monkeypatch, awaited=True)
+
+
+#: Every operation the client repeats.
+READS: dict[str, Callable[[Any], Any]] = {
+    "balances": lambda c: c.balances.list(),
+    "catalogue": lambda c: c.catalogue.list(),
+    "templates": lambda c: c.templates.list(),
+    "stock": lambda c: c.stock.check(product_token="t"),
+    "exchange_rates": lambda c: c.exchange_rates.get(from_currency="DKK", to_currency="EUR"),
+    "search": lambda c: c.orders.search(ref_id="r"),
+    "pdf": lambda c: c.pdfs.get(order_uid="x"),
+}
+
+ORDER: dict[str, Any] = {"product_token": "t", "value": 100, "currency": "DKK", "ref_id": "r"}
+
+#: Every operation the client never repeats.
+WRITES: dict[str, Callable[[Any], Any]] = {
+    "create": lambda c: c.orders.create(**ORDER, quantity=1),
+    "create_sync": lambda c: c.orders.create_sync(**ORDER, quantity=1),
+    "send_reward": lambda c: c.send_reward(
+        **ORDER, recipient=Recipient(email="jane@example.com"), template_id=42
+    ),
+    "resend": lambda c: c.orders.resend(order_uid="x"),
+    "cancel": lambda c: c.orders.cancel(order_uid="x"),
+    "upload": lambda c: c.uploads.create(file=b"%PDF-1.7", file_name="po.pdf"),
+}
+
+
+class TestRateLimitMapping:
+    """A 429: the rate limit was exceeded and the request was not processed."""
+
+    def test_a_429_is_a_rate_limit_error_carrying_retry_after(self):
+        client, calls = make_client(rate_limited("30"))
+        with pytest.raises(HuurayRateLimitError) as caught:
+            client.balances.list()
+        error = caught.value
+        assert type(error) is HuurayRateLimitError
+        assert isinstance(error, HuurayAPIError)
+        assert error.retry_after == 30
+        assert (error.http_status, error.status) == (429, 429)
+        assert error.status_message == "Too Many Requests"
+        assert (error.method, error.path) == ("GET", "/v4/Balance")
+        assert len(calls) == 1
+
+    def test_retry_after_is_none_without_the_header(self):
+        client, _ = make_client(rate_limited(None))
+        with pytest.raises(HuurayRateLimitError) as caught:
+            client.balances.list()
+        assert caught.value.retry_after is None
+
+    @pytest.mark.parametrize(
+        ("header", "seconds"),
+        [
+            ("0", 0),
+            ("120", 120),
+            (" 45 ", 45),
+            ("", None),
+            ("soon", None),
+            ("-5", None),
+            ("1.5", None),
+            ("30s", None),
+            ("+30", None),
+            ("Wed, 21 Oct 2026 07:28:00 GMT", None),
+            ("9" * 400, int("9" * 400)),
+        ],
+        ids=lambda value: f"{len(str(value))}-digits" if len(str(value)) > 40 else None,
+    )
+    def test_reads_retry_after_as_whole_seconds_or_none_like_the_pdf_answer(self, header, seconds):
+        client, _ = make_client(rate_limited(header))
+        with pytest.raises(HuurayRateLimitError) as caught:
+            client.balances.list()
+        assert caught.value.retry_after == seconds
+
+    def test_reads_retry_after_from_a_429_whose_body_is_not_json(self):
+        client, _ = make_client(
+            MockResponse(status=429, text="<html>slow down</html>", headers={"Retry-After": "7"})
+        )
+        with pytest.raises(HuurayRateLimitError) as caught:
+            client.balances.list()
+        assert caught.value.retry_after == 7
+        assert caught.value.status_message is None
+
+    def test_from_response_without_headers_has_no_retry_after(self):
+        error = HuurayAPIError.from_response(429, {"Status": 429}, "GET", "/v4/Balance")
+        assert type(error) is HuurayRateLimitError
+        assert error.retry_after is None
+
+    def test_retry_after_is_read_for_a_429_only(self):
+        client, _ = make_client(MockResponse(status=503, headers={"Retry-After": "7"}))
+        with pytest.raises(HuurayServerError) as caught:
+            client.balances.list()
+        assert not hasattr(caught.value, "retry_after")
+
+    async def test_the_async_client_maps_a_429_the_same_way(self):
+        client, calls = make_async_client(rate_limited("30"))
+        async with client:
+            with pytest.raises(HuurayRateLimitError) as caught:
+                await client.balances.list()
+        assert type(caught.value) is HuurayRateLimitError
+        assert caught.value.retry_after == 30
+        assert len(calls) == 1
+
+
+class TestRateLimitedReads:
+    """A read answered 429 waits ``Retry-After`` instead of the backoff, within ``max_delay``."""
+
+    def test_waits_with_time_sleep_and_asyncio_sleep_by_default(self):
+        assert client_module._sleep is time.sleep
+        assert client_module._async_sleep is asyncio.sleep
+
+    def test_waits_retry_after_instead_of_the_backoff_and_signs_again(self, sleeps):
+        client, calls = make_client([rate_limited("2"), BALANCES], retry=RETRYING)
+        assert client.balances.list().balances == []
+        assert sleeps == [2]
+        assert len(calls) == 2
+        assert len({call.headers["x-api-nonce"] for call in calls}) == 2
+
+    @pytest.mark.parametrize("read", READS.values(), ids=READS)
+    def test_every_operation_the_client_repeats_waits_retry_after(self, sleeps, read):
+        client, calls = make_client(
+            [rate_limited("3"), MockResponse(status=200, json={})], retry=RETRYING
+        )
+        read(client)
+        assert sleeps == [3]
+        assert len(calls) == 2
+
+    def test_a_retry_after_of_zero_still_waits_one_second(self, sleeps):
+        client, calls = make_client([rate_limited("0"), BALANCES], retry=RETRYING)
+        client.balances.list()
+        assert sleeps == [1]
+        assert len(calls) == 2
+
+    @pytest.mark.parametrize("header", [None, "soon", "1.5", "Wed, 21 Oct 2026 07:28:00 GMT"])
+    def test_backs_off_as_before_without_a_usable_retry_after(self, sleeps, header):
+        client, calls = make_client([rate_limited(header), BALANCES], retry=RETRYING)
+        client.balances.list()
+        assert sleeps == [BACKOFF]
+        assert len(calls) == 2
+
+    @pytest.mark.parametrize(
+        "next_failure",
+        [
+            MockResponse(status=503),
+            MockResponse(raises=httpx.ConnectError("refused")),
+            MockResponse(status=200, text="not json"),
+            rate_limited(None),
+        ],
+        ids=["503", "connection-failure", "garbled-body", "429-without-retry-after"],
+    )
+    def test_a_retry_after_replaces_only_the_wait_that_follows_it(self, sleeps, next_failure):
+        client, calls = make_client([rate_limited("3"), next_failure, BALANCES], retry=RETRYING)
+        client.balances.list()
+        assert sleeps == [3, BACKOFF]
+        assert len(calls) == 3
+
+    def test_a_retry_after_equal_to_max_delay_is_waited(self, sleeps):
+        client, calls = make_client([rate_limited("4"), BALANCES], retry=RETRYING)
+        client.balances.list()
+        assert sleeps == [4]
+        assert len(calls) == 2
+
+    @pytest.mark.parametrize(
+        "header", ["5", "3600", "9" * 400], ids=["just-over", "an-hour", "past-float"]
+    )
+    def test_a_retry_after_longer_than_max_delay_is_raised_at_once(self, sleeps, header):
+        # The caller decides whether to wait that long. Never an OverflowError.
+        client, calls = make_client([rate_limited(header)], retry=RETRYING)
+        with pytest.raises(HuurayRateLimitError) as caught:
+            client.balances.list()
+        assert caught.value.retry_after == int(header)
+        assert sleeps == []
+        assert len(calls) == 1
+
+    def test_a_longer_max_delay_waits_a_longer_retry_after(self, sleeps):
+        client, calls = make_client(
+            [rate_limited("30"), BALANCES], retry=RetryOptions(max_retries=1, max_delay=30)
+        )
+        client.balances.list()
+        assert sleeps == [30]
+        assert len(calls) == 2
+
+    def test_the_one_second_floor_is_what_must_fit_max_delay(self, sleeps):
+        client, calls = make_client(
+            [rate_limited("0")], retry=RetryOptions(max_retries=2, max_delay=0.5)
+        )
+        with pytest.raises(HuurayRateLimitError):
+            client.balances.list()
+        assert sleeps == []
+        assert len(calls) == 1
+
+    def test_raises_the_rate_limit_error_when_the_retries_are_used_up(self, sleeps):
+        client, calls = make_client([rate_limited("1")] * 3, retry=RETRYING)
+        with pytest.raises(HuurayRateLimitError) as caught:
+            client.balances.list()
+        assert caught.value.retry_after == 1
+        assert sleeps == [1, 1]
+        assert len(calls) == 3
+
+    def test_is_raised_at_once_when_retrying_is_disabled(self, sleeps):
+        client, calls = make_client([rate_limited("1")], retry=RetryOptions(max_retries=0))
+        with pytest.raises(HuurayRateLimitError):
+            client.balances.list()
+        assert sleeps == []
+        assert len(calls) == 1
+
+    def test_the_escape_hatch_waits_only_when_marked_retryable(self, sleeps):
+        client, calls = make_client(
+            [rate_limited("2"), MockResponse(json={"OrderUID": "abc"}), rate_limited("2")],
+            retry=RETRYING,
+        )
+        client.request("POST", "/v4/Search", {"RefID": "r"}, retryable=True)
+        with pytest.raises(HuurayRateLimitError):
+            client.request("POST", "/v4/Search", {"RefID": "r"})
+        assert sleeps == [2]
+        assert len(calls) == 3
+
+
+class TestRateLimitedWrites:
+    """Never repeated, and never indeterminate: a 429 was not processed."""
+
+    @pytest.mark.parametrize("write", WRITES.values(), ids=WRITES)
+    def test_a_429_is_raised_as_it_is_after_one_attempt(self, sleeps, write):
+        client, calls = make_client([rate_limited("1")], retry=RetryOptions(max_retries=3))
+        with pytest.raises(HuurayRateLimitError) as caught:
+            write(client)
+        assert type(caught.value) is HuurayRateLimitError
+        assert caught.value.retry_after == 1
+        assert sleeps == []
+        assert len(calls) == 1
+
+    @pytest.mark.parametrize("write", WRITES.values(), ids=WRITES)
+    async def test_the_async_client_raises_it_after_one_attempt_too(self, async_sleeps, write):
+        client, calls = make_async_client([rate_limited("1")], retry=RetryOptions(max_retries=3))
+        async with client:
+            with pytest.raises(HuurayRateLimitError) as caught:
+                await write(client)
+        assert type(caught.value) is HuurayRateLimitError
+        assert caught.value.retry_after == 1
+        assert async_sleeps == []
+        assert len(calls) == 1
+
+
+class TestAsyncRateLimitedReads:
+    async def test_awaits_retry_after_instead_of_the_backoff_and_signs_again(self, async_sleeps):
+        client, calls = make_async_client([rate_limited("2"), BALANCES], retry=RETRYING)
+        async with client:
+            assert (await client.balances.list()).balances == []
+        assert async_sleeps == [2]
+        assert len(calls) == 2
+        assert len({call.headers["x-api-nonce"] for call in calls}) == 2
+
+    @pytest.mark.parametrize("read", READS.values(), ids=READS)
+    async def test_every_operation_the_client_repeats_awaits_retry_after(self, async_sleeps, read):
+        client, calls = make_async_client(
+            [rate_limited("3"), MockResponse(status=200, json={})], retry=RETRYING
+        )
+        async with client:
+            await read(client)
+        assert async_sleeps == [3]
+        assert len(calls) == 2
+
+    async def test_a_retry_after_of_zero_still_waits_one_second(self, async_sleeps):
+        client, calls = make_async_client([rate_limited("0"), BALANCES], retry=RETRYING)
+        async with client:
+            await client.balances.list()
+        assert async_sleeps == [1]
+        assert len(calls) == 2
+
+    async def test_backs_off_without_retry_after_then_waits_the_next_one(self, async_sleeps):
+        client, calls = make_async_client(
+            [rate_limited(None), rate_limited("3"), BALANCES], retry=RETRYING
+        )
+        async with client:
+            await client.balances.list()
+        assert async_sleeps == [BACKOFF, 3]
+        assert len(calls) == 3
+
+    async def test_a_retry_after_replaces_only_the_wait_that_follows_it(self, async_sleeps):
+        client, calls = make_async_client(
+            [rate_limited("3"), MockResponse(raises=httpx.ConnectError("refused")), BALANCES],
+            retry=RETRYING,
+        )
+        async with client:
+            await client.balances.list()
+        assert async_sleeps == [3, BACKOFF]
+        assert len(calls) == 3
+
+    @pytest.mark.parametrize("header", ["5", "9" * 400], ids=["just-over", "past-float"])
+    async def test_a_retry_after_longer_than_max_delay_is_raised_at_once(
+        self, async_sleeps, header
+    ):
+        client, calls = make_async_client([rate_limited(header)], retry=RETRYING)
+        async with client:
+            with pytest.raises(HuurayRateLimitError) as caught:
+                await client.balances.list()
+        assert caught.value.retry_after == int(header)
+        assert async_sleeps == []
+        assert len(calls) == 1
+
+    async def test_raises_the_rate_limit_error_when_the_retries_are_used_up(self, async_sleeps):
+        client, calls = make_async_client([rate_limited("1")] * 3, retry=RETRYING)
+        async with client:
+            with pytest.raises(HuurayRateLimitError) as caught:
+                await client.balances.list()
+        assert caught.value.retry_after == 1
+        assert async_sleeps == [1, 1]
+        assert len(calls) == 3
+
+    async def test_awaits_the_real_asyncio_sleep_without_blocking(self, monkeypatch):
+        # Retry-After: 0 is floored to a real one-second wait, the shortest there is.
+        def blocking_sleep(seconds: float) -> None:
+            raise AssertionError("the async client blocked the event loop with time.sleep()")
+
+        monkeypatch.setattr("huuray.client._sleep", blocking_sleep)
+        client, calls = make_async_client([rate_limited("0"), BALANCES], retry=RETRYING)
+        started = time.monotonic()
+        async with client:
+            await client.balances.list()
+        assert time.monotonic() - started >= 0.9
+        assert len(calls) == 2
 
 
 class TestTransportFaultsOnTheResponseBody:

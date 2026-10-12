@@ -9,13 +9,17 @@ import pytest
 
 from huuray import (
     SYNC_QUANTITY_LIMIT,
+    HuurayAPIError,
     HuurayIndeterminateOrderError,
+    HuurayRateLimitError,
     HuurayServerError,
     HuurayValidationError,
     Recipient,
+    RetryOptions,
 )
+from huuray.errors import indeterminate_order_error
 
-from .helpers import MockResponse, make_async_client, make_client
+from .helpers import MockResponse, make_async_client, make_client, rate_limited
 
 #: A valid minimum order, splatted as **BASE and overridden per test.
 #:
@@ -515,6 +519,20 @@ class TestIndeterminateOrders:
         with pytest.raises(HuurayValidationError):
             client.orders.create(**BASE)
 
+    @pytest.mark.parametrize("method", ["create", "create_sync"])
+    def test_does_not_mask_a_429_that_order_was_not_processed(self, method):
+        # Not indeterminate, and not retried: the same order is safe to send again.
+        client, calls = make_client([rate_limited("7")], retry=RetryOptions(max_retries=3))
+        with pytest.raises(HuurayRateLimitError) as caught:
+            getattr(client.orders, method)(**BASE, ref_id="ref-9")
+        assert type(caught.value) is HuurayRateLimitError
+        assert caught.value.retry_after == 7
+        assert len(calls) == 1
+
+    def test_a_429_is_never_the_cause_of_an_indeterminate_order(self):
+        rate_limit = HuurayAPIError.from_response(429, None, "POST", "/v4/Order")
+        assert indeterminate_order_error(rate_limit, "ref-9") is None
+
     def test_also_wraps_create_sync(self):
         client, _ = make_client(MockResponse(status=500))
         with pytest.raises(HuurayIndeterminateOrderError):
@@ -650,6 +668,15 @@ class TestAsyncOrders:
             with pytest.raises(HuurayIndeterminateOrderError) as caught:
                 await client.orders.create(**BASE, ref_id="ref-9")
         assert caught.value.ref_id == "ref-9"
+
+    async def test_does_not_mask_a_429_that_order_was_not_processed(self):
+        client, calls = make_async_client([rate_limited("7")], retry=RetryOptions(max_retries=3))
+        async with client:
+            with pytest.raises(HuurayRateLimitError) as caught:
+                await client.orders.create(**BASE, ref_id="ref-9")
+        assert type(caught.value) is HuurayRateLimitError
+        assert caught.value.retry_after == 7
+        assert len(calls) == 1
 
     async def test_raises_indeterminate_on_a_mid_body_drop(self):
         client, _ = make_async_client(MockResponse(body_raises=httpx.ReadError("terminated")))

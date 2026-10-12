@@ -18,6 +18,7 @@ from huuray import (
     HuurayClient,
     HuurayConnectionError,
     HuurayNotFoundError,
+    HuurayRateLimitError,
     HuurayServerError,
     HuurayTimeoutError,
     HuurayValidationError,
@@ -31,7 +32,14 @@ from huuray.auth import sign_request
 from huuray.redact import BEARER_MARKER
 from huuray.resources import pdfs as pdfs_module
 
-from .helpers import MockResponse, RecordingTransport, make_async_client, make_client
+from .helpers import (
+    MockResponse,
+    RecordingTransport,
+    make_async_client,
+    make_client,
+    rate_limited,
+    record_retry_sleeps,
+)
 
 ORDER_UID = "0f8a3c52-1d6e-4b7a-9c2f-5e4d3b2a1c90"
 TEMPLATE_UID = "c7d1e2f3-4a5b-4c6d-8e9f-0a1b2c3d4e5f"
@@ -161,6 +169,17 @@ def async_clock(clock: FakeClock, monkeypatch: pytest.MonkeyPatch) -> FakeClock:
     """The same clock, with the blocking sleep made to fail if the async client uses it."""
     monkeypatch.setattr("huuray.resources.pdfs._sleep", blocking_sleep)
     return clock
+
+
+@pytest.fixture
+def retry_sleeps(monkeypatch: pytest.MonkeyPatch) -> list[float]:
+    """The waits between a read's attempts, which are not get_when_ready()'s own."""
+    return record_retry_sleeps(monkeypatch, awaited=False)
+
+
+@pytest.fixture
+def async_retry_sleeps(monkeypatch: pytest.MonkeyPatch) -> list[float]:
+    return record_retry_sleeps(monkeypatch, awaited=True)
 
 
 def client_on_clock(
@@ -477,6 +496,21 @@ class TestRetries:
         assert len(calls) == 2
         assert len(set(nonces(calls))) == 2
 
+    def test_retries_a_429_after_its_retry_after(self, retry_sleeps):
+        client, calls = make_client([rate_limited("2"), ready()], retry=RETRYING)
+        assert client.pdfs.get(order_uid=ORDER_UID) == READY_RESULT
+        assert retry_sleeps == [2]
+        assert len(calls) == 2
+        assert len(set(nonces(calls))) == 2
+
+    def test_gives_up_on_a_429_with_the_rate_limit_error(self, retry_sleeps):
+        client, calls = make_client([rate_limited("2")] * 3, retry=RETRYING)
+        with pytest.raises(HuurayRateLimitError) as caught:
+            client.pdfs.get(order_uid=ORDER_UID)
+        assert caught.value.retry_after == 2
+        assert retry_sleeps == [2, 2]
+        assert len(calls) == 3
+
 
 class TestErrors:
     @pytest.mark.parametrize(
@@ -494,11 +528,12 @@ class TestErrors:
                 HuurayValidationError,
             ),
             (401, "Restricted Access", HuurayAuthError),
+            (429, "Too Many Requests", HuurayRateLimitError),
             (400, "OrderUID is required", HuurayAPIError),
             (500, "The PDF could not be generated", HuurayServerError),
         ],
     )
-    def test_maps_the_envelope_to_the_existing_error_types(self, status, message, expected):
+    def test_maps_the_envelope_to_the_error_types(self, status, message, expected):
         client, _ = make_client(MockResponse(status=status, json=envelope(status, [], message)))
         with pytest.raises(expected, match=message) as caught:
             client.pdfs.get(order_uid=ORDER_UID)
@@ -740,6 +775,49 @@ class TestGetWhenReady:
         assert len(calls) == 3
         assert len(set(nonces(calls))) == 3
 
+    def test_a_429_while_waiting_is_retried_by_the_read_policy_after_retry_after(
+        self, clock, retry_sleeps
+    ):
+        client, calls = make_client([not_ready("1"), rate_limited("2"), ready()], retry=RETRYING)
+        assert client.pdfs.get_when_ready(order_uid=ORDER_UID) == READY_RESULT
+        assert clock.sleeps == [1]
+        assert retry_sleeps == [2]
+        assert len(calls) == 3
+        assert len(set(nonces(calls))) == 3
+
+    def test_a_429_that_outlives_the_read_retries_ends_the_wait_with_the_rate_limit_error(
+        self, clock, retry_sleeps
+    ):
+        # No looping of its own: the 202 was waited on, the 429 only retried as a read.
+        client, calls = make_client([not_ready("1"), *[rate_limited("2")] * 3], retry=RETRYING)
+        with pytest.raises(HuurayRateLimitError) as caught:
+            client.pdfs.get_when_ready(order_uid=ORDER_UID)
+        assert type(caught.value) is HuurayRateLimitError
+        assert caught.value.retry_after == 2
+        assert clock.sleeps == [1]
+        assert retry_sleeps == [2, 2]
+        assert len(calls) == 4
+
+    def test_a_429_asking_for_longer_than_max_delay_ends_the_wait_at_once(
+        self, clock, retry_sleeps
+    ):
+        # Not waited on by get_when_ready() either, though max_wait would cover it.
+        client, calls = make_client([not_ready("1"), rate_limited("60")], retry=RETRYING)
+        with pytest.raises(HuurayRateLimitError) as caught:
+            client.pdfs.get_when_ready(order_uid=ORDER_UID)
+        assert caught.value.retry_after == 60
+        assert clock.sleeps == [1]
+        assert retry_sleeps == []
+        assert len(calls) == 2
+
+    def test_a_429_ends_the_wait_at_once_when_retrying_is_disabled(self, clock, retry_sleeps):
+        client, calls = make_client([rate_limited("1")])
+        with pytest.raises(HuurayRateLimitError):
+            client.pdfs.get_when_ready(order_uid=ORDER_UID)
+        assert clock.sleeps == []
+        assert retry_sleeps == []
+        assert len(calls) == 1
+
     @pytest.mark.parametrize(
         "max_wait", [-1, -0.001, float("nan"), float("inf"), True, "600", None]
     )
@@ -818,6 +896,33 @@ class TestAsyncGetWhenReady:
                 await client.pdfs.get_when_ready(order_uid=ORDER_UID)
         assert async_clock.sleeps == []
         assert len(calls) == 1
+
+    async def test_a_429_while_waiting_is_retried_after_retry_after(
+        self, async_clock, async_retry_sleeps
+    ):
+        client, calls = make_async_client(
+            [not_ready("1"), rate_limited("2"), ready()], retry=RETRYING
+        )
+        async with client:
+            assert await client.pdfs.get_when_ready(order_uid=ORDER_UID) == READY_RESULT
+        assert async_clock.sleeps == [1]
+        assert async_retry_sleeps == [2]
+        assert len(calls) == 3
+
+    async def test_a_429_that_outlives_the_read_retries_ends_the_wait_with_the_rate_limit_error(
+        self, async_clock, async_retry_sleeps
+    ):
+        client, calls = make_async_client(
+            [not_ready("1"), *[rate_limited("2")] * 3], retry=RETRYING
+        )
+        async with client:
+            with pytest.raises(HuurayRateLimitError) as caught:
+                await client.pdfs.get_when_ready(order_uid=ORDER_UID)
+        assert type(caught.value) is HuurayRateLimitError
+        assert caught.value.retry_after == 2
+        assert async_clock.sleeps == [1]
+        assert async_retry_sleeps == [2, 2]
+        assert len(calls) == 4
 
     async def test_rejects_a_bad_max_wait_before_sending(self, async_clock):
         client, calls = make_async_client([ready()])

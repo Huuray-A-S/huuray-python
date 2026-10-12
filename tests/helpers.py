@@ -298,3 +298,35 @@ def make_async_client(
         **options,
     )
     return client, transport.calls
+
+
+def rate_limited(retry_after: Optional[str] = None) -> MockResponse:
+    """A 429, with a ``Retry-After`` header when one is given."""
+    return MockResponse(
+        status=429,
+        json={"Status": 429, "StatusMessage": "Too Many Requests"},
+        headers={} if retry_after is None else {"Retry-After": retry_after},
+    )
+
+
+def record_retry_sleeps(monkeypatch: Any, *, awaited: bool) -> list[float]:
+    """Replace the sleeps a retry waits with, recording each wait instead of taking it.
+
+    ``awaited`` says which client is under test, and the other client's sleep
+    fails: the async client must never block the event loop with ``time.sleep()``.
+    """
+    sleeps: list[float] = []
+
+    def sleep(seconds: float) -> None:
+        if awaited:
+            raise AssertionError("the async client blocked the event loop with time.sleep()")
+        sleeps.append(seconds)
+
+    async def async_sleep(seconds: float) -> None:
+        if not awaited:
+            raise AssertionError("the sync client waited with asyncio.sleep()")
+        sleeps.append(seconds)
+
+    monkeypatch.setattr("huuray.client._sleep", sleep)
+    monkeypatch.setattr("huuray.client._async_sleep", async_sleep)
+    return sleeps

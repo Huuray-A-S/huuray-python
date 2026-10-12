@@ -14,9 +14,11 @@ for them.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any
 
 from .redact import redact
+from .retry import retry_after_seconds
 
 
 class HuurayError(Exception):
@@ -93,8 +95,12 @@ class HuurayAPIError(HuurayError):
         body: Any,
         method: str,
         path: str,
+        headers: Mapping[str, str] | None = None,
     ) -> HuurayAPIError:
-        """Build the most specific error class for an HTTP status."""
+        """Build the most specific error class for an HTTP status.
+
+        ``headers`` are the response headers: a 429 carries ``Retry-After``.
+        """
         fields = body if isinstance(body, dict) else {}
         status_message = fields.get("StatusMessage") or fields.get("Message")
         status = fields.get("Status")
@@ -120,6 +126,9 @@ class HuurayAPIError(HuurayError):
             return HuurayNotFoundError(*args)
         if http_status == 422:
             return HuurayValidationError(*args)
+        if http_status == 429:
+            retry_after = None if headers is None else headers.get("Retry-After")
+            return HuurayRateLimitError(*args, retry_after=retry_after_seconds(retry_after))
         if http_status >= 500:
             return HuurayServerError(*args)
         return HuurayAPIError(*args)
@@ -148,6 +157,36 @@ class HuurayNotFoundError(HuurayAPIError):
 
 class HuurayValidationError(HuurayAPIError):
     """422 — the request was well-formed but rejected. Read ``status_message``."""
+
+
+class HuurayRateLimitError(HuurayAPIError):
+    """429: the rate limit for your IP address was exceeded.
+
+    The request was **not processed**, so it is safe to send the same request
+    again after waiting ``retry_after`` seconds. That holds for an order, a
+    resend, a cancel and an upload too. This client never repeats those for you,
+    and a 429 on an order is never a :class:`HuurayIndeterminateOrderError`.
+
+    A read is repeated for you: it waits ``retry_after`` seconds, at least 1,
+    in place of the backoff. This error is raised when the retries are used up,
+    or at once when that wait is longer than the retry policy's ``max_delay``.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        http_status: int,
+        status: int | None,
+        status_message: str | None,
+        body: Any,
+        method: str,
+        path: str,
+        retry_after: int | None = None,
+    ) -> None:
+        super().__init__(message, http_status, status, status_message, body, method, path)
+        #: The ``Retry-After`` header in whole seconds, or ``None`` when it is
+        #: absent or not a whole number of seconds.
+        self.retry_after = retry_after
 
 
 class HuurayServerError(HuurayAPIError):
@@ -207,7 +246,8 @@ def indeterminate_order_error(
 
     A transport fault or a 5xx leaves the outcome unknown. A 4xx does not: the
     API definitively rejected that order, and masking it would send the caller
-    into a reconciliation flow for an order that was never created.
+    into a reconciliation flow for an order that was never created. That goes
+    for a 429 too: the request was not processed.
     """
     if isinstance(cause, (HuurayConnectionError, HuurayServerError)):
         return HuurayIndeterminateOrderError(ref_id)

@@ -167,7 +167,7 @@ else:
     ...  # a 202: ask again after result.retry_after seconds
 ```
 
-A 202 is not success: the order is still being processed, or a supplier has not delivered a code yet, so `ready` is `False` and `documents` is empty. `pdfs.get_when_ready()` asks again for you, waiting `Retry-After` seconds (at least 1, or 30 without one), and raises `HuurayTimeoutError` when the next wait would pass `max_wait` (10 minutes by default). Any 2xx other than 200 is treated like 202 (not ready); any non-2xx ends the wait with an exception, after the retries any read gets on a 5xx.
+A 202 is not success: the order is still being processed, or a supplier has not delivered a code yet, so `ready` is `False` and `documents` is empty. `pdfs.get_when_ready()` asks again for you, waiting `Retry-After` seconds (at least 1, or 30 without one), and raises `HuurayTimeoutError` when the next wait would pass `max_wait` (10 minutes by default). Any 2xx other than 200 is treated like 202 (not ready); any non-2xx ends the wait with an exception, after the retries any read gets on a 5xx or a 429.
 
 **The PDF is a bearer instrument**: it shows the redeemable code, so whoever holds the file holds the value. Never log `content`, and keep it no longer than you need it. `repr()` and `redact()` show only its size.
 
@@ -219,7 +219,9 @@ Anything other than `HuurayNotFoundError` from the lookup means the lookup itsel
 
 This is why `send_reward()` requires a `ref_id` even though the API treats it as optional: without one, an order that times out cannot be looked up.
 
-Reads *are* retried — with backoff and jitter, on connection failures and 5xx.
+Reads *are* retried, with backoff and jitter, on connection failures, 5xx and 429.
+
+A 429 means the rate limit for your IP address was exceeded and the request was not processed. A read waits the `Retry-After` seconds the API names (at least 1) in place of the backoff. When that is longer than the retry policy's `max_delay`, or the retries are used up, it raises `HuurayRateLimitError`, whose `retry_after` holds those seconds. An order, a resend, a cancel or an upload is not repeated for you on a 429 either: it raises `HuurayRateLimitError`, never `HuurayIndeterminateOrderError`, and the same request is safe to send again after waiting.
 
 ### 3. Synchronous and asynchronous orders are different calls
 
@@ -333,8 +335,9 @@ Every error raised by this library extends `HuurayError`. Input guards — a fra
 | `HuurayAuthError` | 401 or 403 — see *Authentication* above |
 | `HuurayNotFoundError` | 404 — including "no results", see above |
 | `HuurayValidationError` | 422 |
+| `HuurayRateLimitError` | 429: the request was not processed, and is safe to send again after `retry_after` seconds |
 | `HuurayServerError` | 5xx |
-| `HuurayAPIError` | any other non-2xx; the base for the four above |
+| `HuurayAPIError` | any other non-2xx; the base for the five above |
 | `HuurayIndeterminateOrderError` | an order whose outcome is unknown — **do not retry** |
 
 API errors carry `http_status`, `status`, `status_message`, and the parsed `body`. The client reads `StatusMessage` and falls back to the deprecated `Message`. The retained `body` is redacted, so logging an error object never leaks a voucher code.

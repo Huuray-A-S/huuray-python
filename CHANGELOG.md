@@ -16,7 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the PDF decoded to bytes. `ready` is `False` on a 202, the answer while the order is
   processed or a supplier code is pending, as on any 2xx other than 200, and
   `retry_after` is the `Retry-After` header in whole seconds. It is a read, retried
-  on connection failures and 5xx. A 200 whose `Content` is not valid base64 raises
+  on connection failures, 5xx and 429. A 200 whose `Content` is not valid base64 raises
   `HuurayConnectionError`, like any unreadable 2xx. The token needs the Search
   permission; the API, not this client, enforces its limit of 3 receivers per order.
 - `pdfs.get_when_ready(..., max_wait=600.0)` on both clients repeats the call while
@@ -51,6 +51,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The request-conformance gate validates a `multipart/form-data` body by its part
   names, and that a binary part is sent as a file with a filename. It fails closed on
   a multipart shape it does not understand.
+- `HuurayRateLimitError`, a `HuurayAPIError`, is raised for a 429: the rate limit for
+  your IP address was exceeded and the request was not processed, so the same request
+  is safe to send again after waiting. `retry_after` is the `Retry-After` header in
+  whole seconds, or `None` when it is absent or not a whole number of seconds.
 
 ### Changed
 
@@ -65,6 +69,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   only) it is the template the gift cards are printed with, and `template_id` is not
   required. The API decides, not this client. `recipients` is still required only when
   `template_id` is set, and `send_reward()` still takes a required `template_id`.
+- A read answered 429 waits `Retry-After` seconds (at least 1) in place of the backoff
+  before it is repeated. A wait longer than `RetryOptions.max_delay` is not taken:
+  `HuurayRateLimitError` is raised at once, as it is when the retries are used up.
+  Without a usable `Retry-After` the backoff applies, as before. A 429 used to be a
+  plain `HuurayAPIError`.
+- Orders, resends, cancels and uploads are still never retried: a 429 raises
+  `HuurayRateLimitError`, never `HuurayIndeterminateOrderError`.
+  `pdfs.get_when_ready()` ends its wait with that error when a 429 outlives the read
+  retries.
 
 ### Confirmed against the live API
 

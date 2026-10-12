@@ -12,6 +12,7 @@ import pytest
 from huuray import (
     HuurayAPIError,
     HuurayConnectionError,
+    HuurayRateLimitError,
     HuurayServerError,
     HuurayTimeoutError,
     HuurayValidationError,
@@ -24,7 +25,7 @@ from huuray.auth import sign_request
 from huuray.resources._base import FilePart
 from huuray.resources.uploads import _operation
 
-from .helpers import CapturedPart, MockResponse, make_async_client, make_client
+from .helpers import CapturedPart, MockResponse, make_async_client, make_client, rate_limited
 
 #: Every byte value, plus the sequences that frame a multipart body.
 AWKWARD_BYTES = bytes(range(256)) + b"\r\n--\r\n\r\n--boundary--\r\n" + bytes(range(255, -1, -1))
@@ -288,6 +289,15 @@ class TestNeverRetried:
         assert len(calls) == 1
         assert MAY_HAVE_BEEN_STORED in str(caught.value)
         assert "LEAKED" not in str(caught.value)
+
+    def test_makes_one_attempt_on_a_429_which_stored_nothing(self):
+        client, calls = make_client([rate_limited("1")], retry=self.RETRYING)
+        with pytest.raises(HuurayRateLimitError) as caught:
+            upload(client)
+        assert len(calls) == 1
+        assert caught.value.retry_after == 1
+        # The request was not processed, so nothing is said about a stored upload.
+        assert MAY_HAVE_BEEN_STORED not in str(caught.value)
 
     def test_other_operations_keep_their_messages(self):
         client, _ = make_client(MockResponse(raises=httpx.ConnectTimeout("timed out")))

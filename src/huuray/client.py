@@ -30,6 +30,7 @@ from .errors import (
     HuurayAPIError,
     HuurayConfigError,
     HuurayConnectionError,
+    HuurayRateLimitError,
     HuurayTimeoutError,
 )
 from .resources._base import Operation
@@ -46,7 +47,7 @@ from .resources.pdfs import AsyncPdfsResource, PdfsResource
 from .resources.stock import AsyncStockResource, StockResource
 from .resources.templates import AsyncTemplatesResource, TemplatesResource
 from .resources.uploads import AsyncUploadsResource, UploadsResource
-from .retry import DEFAULT_RETRY, RetryOptions, backoff_delay, is_retryable_status
+from .retry import DEFAULT_RETRY, MIN_WAIT, RetryOptions, backoff_delay, is_retryable_status
 
 #: The production API. The specification declares no ``servers`` block, so the
 #: host is set here. Live-confirmed against every endpoint this client calls.
@@ -82,6 +83,11 @@ _BAD_HOST_OR_PORT = "has an empty or invalid host, or a port that is not a numbe
 T = TypeVar("T")
 
 _UNREADABLE = object()
+
+# The sleeps a retry waits with. They are looked up on every call, so a test
+# replaces them instead of waiting.
+_sleep = time.sleep
+_async_sleep = asyncio.sleep
 
 
 def _with_note(message: str, op: Operation) -> str:
@@ -385,11 +391,22 @@ class _BaseClient:
             None if parsed is _UNREADABLE else parsed,
             op.method,
             op.path,
+            headers,
         )
 
     def _attempts(self, op: Operation) -> int:
         """Retries permitted for this operation. Never inferred from the verb."""
         return self._retry.max_retries if op.retryable else 0
+
+    def _rate_limit_wait(self, exc: HuurayAPIError) -> Optional[int]:
+        """Seconds a 429 says to wait before the next attempt, at least 1.
+
+        ``None`` for any other error, and for a 429 without a usable
+        ``Retry-After``: the backoff applies.
+        """
+        if isinstance(exc, HuurayRateLimitError) and exc.retry_after is not None:
+            return max(MIN_WAIT, exc.retry_after)
+        return None
 
 
 class HuurayClient(_BaseClient):
@@ -555,10 +572,13 @@ class HuurayClient(_BaseClient):
     def _send(self, op: Operation) -> RawResponse[Any]:
         """Sign and send one request, retrying only if the operation allows it."""
         attempts = self._attempts(op)
+        # The wait a 429 asked for. It replaces the backoff before the next attempt.
+        wait: Optional[int] = None
 
         for attempt in range(attempts + 1):
             if attempt:
-                time.sleep(backoff_delay(attempt - 1, self._retry))
+                _sleep(backoff_delay(attempt - 1, self._retry) if wait is None else wait)
+                wait = None
 
             request = self._build_request(op)
             try:
@@ -580,9 +600,13 @@ class HuurayClient(_BaseClient):
                     continue
                 raise
             except HuurayAPIError as exc:
-                if attempt < attempts and is_retryable_status(exc.http_status):
-                    continue
-                raise
+                if attempt >= attempts or not is_retryable_status(exc.http_status):
+                    raise
+                wait = self._rate_limit_wait(exc)
+                # A wait longer than the policy's ceiling is not taken: the
+                # caller decides whether to wait that long.
+                if wait is not None and wait > self._retry.max_delay:
+                    raise
 
         raise AssertionError("unreachable: the attempt loop always returns or raises")
 
@@ -711,10 +735,15 @@ class AsyncHuurayClient(_BaseClient):
     async def _send(self, op: Operation) -> RawResponse[Any]:
         """Sign and send one request, retrying only if the operation allows it."""
         attempts = self._attempts(op)
+        # The wait a 429 asked for. It replaces the backoff before the next attempt.
+        wait: Optional[int] = None
 
         for attempt in range(attempts + 1):
             if attempt:
-                await asyncio.sleep(backoff_delay(attempt - 1, self._retry))
+                await _async_sleep(
+                    backoff_delay(attempt - 1, self._retry) if wait is None else wait
+                )
+                wait = None
 
             request = self._build_request(op)
             try:
@@ -734,9 +763,13 @@ class AsyncHuurayClient(_BaseClient):
                     continue
                 raise
             except HuurayAPIError as exc:
-                if attempt < attempts and is_retryable_status(exc.http_status):
-                    continue
-                raise
+                if attempt >= attempts or not is_retryable_status(exc.http_status):
+                    raise
+                wait = self._rate_limit_wait(exc)
+                # A wait longer than the policy's ceiling is not taken: the
+                # caller decides whether to wait that long.
+                if wait is not None and wait > self._retry.max_delay:
+                    raise
 
         raise AssertionError("unreachable: the attempt loop always returns or raises")
 

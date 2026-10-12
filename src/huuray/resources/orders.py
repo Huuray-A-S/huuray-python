@@ -386,7 +386,9 @@ class OrdersResource(Resource):
         **Not retried on failure.** The endpoint has no idempotency key, so a
         retry can order twice. A timeout, a dropped connection, a 5xx, or an
         unreadable 2xx body raises
-        :class:`~huuray.HuurayIndeterminateOrderError` instead.
+        :class:`~huuray.HuurayIndeterminateOrderError` instead. A 429 raises
+        :class:`~huuray.HuurayRateLimitError`: the order was not processed, so
+        the same order can be sent again after waiting.
 
         :param value: Denomination **in minor units** — 50.00 is ``5000``.
         :param expires: Optional expiry for the gift cards. Cannot exceed the

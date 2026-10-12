@@ -15,19 +15,33 @@ never        Order, Resend, Cancel, Upload
 
 Note that five of the retryable operations are POSTs. They are POSTs because
 they take a request body, not because they change anything.
+
+A ``429`` names its own wait in ``Retry-After``. A retryable operation waits
+that long, at least 1 second, in place of the backoff. When that is longer than
+``max_delay`` it does not wait: the error is raised at once, for the caller to
+decide.
 """
 
 from __future__ import annotations
 
 import random
+import re
 from dataclasses import dataclass
+from typing import Optional
 
 #: HTTP statuses worth repeating a *read* for.
 #:
-#: ``429`` is included defensively: it is not a documented response on any v4
-#: endpoint, so this client never assumes rate limiting exists — but if one
-#: appears, backing off is strictly better than hammering.
+#: ``429`` is a documented response on every v4 operation: the rate limit for
+#: your IP address was exceeded and the request was not processed.
 _RETRYABLE_STATUS = frozenset({408, 425, 429, 500, 502, 503, 504})
+
+#: The shortest wait between two requests, in seconds: a ``Retry-After: 0``
+#: from a server or proxy never turns into back-to-back requests.
+MIN_WAIT = 1
+
+#: ``Retry-After`` in whole seconds. Anything else, the HTTP-date form included,
+#: reads as absent.
+_DELTA_SECONDS = re.compile(r"[0-9]+")
 
 
 @dataclass(frozen=True)
@@ -36,7 +50,9 @@ class RetryOptions:
 
     :param max_retries: Attempts after the first. ``0`` disables retrying.
     :param base_delay: Base delay in seconds; doubles per attempt, with jitter.
-    :param max_delay: Ceiling for a single backoff wait, in seconds.
+    :param max_delay: Ceiling for a single backoff wait, in seconds. Also the
+        longest ``Retry-After`` waited on after a 429: a longer one raises
+        :class:`~huuray.HuurayRateLimitError` at once.
     """
 
     max_retries: int = 2
@@ -72,3 +88,14 @@ def backoff_delay(attempt: int, options: RetryOptions) -> float:
     exponential = min(options.base_delay * float(2**attempt), options.max_delay)
     # random, not secrets: this is jitter to desynchronise clients, not a secret.
     return random.random() * exponential
+
+
+def retry_after_seconds(value: Optional[str]) -> Optional[int]:
+    """``Retry-After`` as whole seconds, or ``None`` when absent or anything else."""
+    text = "" if value is None else value.strip()
+    if not _DELTA_SECONDS.fullmatch(text):
+        return None
+    try:
+        return int(text)
+    except ValueError:  # more digits than int() converts
+        return None

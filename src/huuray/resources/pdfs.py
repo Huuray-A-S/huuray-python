@@ -5,12 +5,12 @@ from __future__ import annotations
 import asyncio
 import base64
 import math
-import re
 import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Optional
 
 from ..errors import HuurayTimeoutError
+from ..retry import MIN_WAIT, retry_after_seconds
 from ._base import AsyncResource, Operation, Resource, compact
 
 if TYPE_CHECKING:  # pragma: no cover - import cycle only exists for type checkers
@@ -21,14 +21,6 @@ DEFAULT_MAX_WAIT = 600.0
 
 #: The wait after a 202 without a usable ``Retry-After``, in seconds.
 DEFAULT_RETRY_AFTER = 30
-
-#: The shortest wait between two requests, in seconds: a ``Retry-After: 0``
-#: from a server or proxy never turns into back-to-back requests.
-MIN_WAIT = 1
-
-#: ``Retry-After`` in whole seconds. Anything else, the HTTP-date form included,
-#: reads as absent.
-_DELTA_SECONDS = re.compile(r"[0-9]+")
 
 # The clock and the sleeps get_when_ready() waits with. They are looked up on
 # every call, so a test replaces them instead of waiting, as it does the backoff.
@@ -173,24 +165,13 @@ def _decode(data: Any) -> _Body:
     )
 
 
-def _retry_after(value: Optional[str]) -> Optional[int]:
-    """``Retry-After`` as whole seconds, or ``None`` when absent or anything else."""
-    text = "" if value is None else value.strip()
-    if not _DELTA_SECONDS.fullmatch(text):
-        return None
-    try:
-        return int(text)
-    except ValueError:  # more digits than int() converts
-        return None
-
-
 def _result(response: RawResponse[Any]) -> PdfResult:
     body: _Body = response.data
     return PdfResult(
         ready=response.http_status == 200,
         order_uid=body.order_uid,
         documents=body.documents,
-        retry_after=_retry_after(response.headers.get("Retry-After")),
+        retry_after=retry_after_seconds(response.headers.get("Retry-After")),
     )
 
 
@@ -263,11 +244,11 @@ class PdfsResource(Resource):
         **The PDF is a bearer instrument**: it shows the redeemable code. Never
         log ``content``, and keep it no longer than you need it.
 
-        Retried like any read, on connection failures and 5xx: the call never
-        changes the order. The API supports orders with at most 3 receivers and
-        answers others with a 422, raised as ``HuurayValidationError``; an
-        unknown order or voucher is a 404, raised as ``HuurayNotFoundError``.
-        This client checks neither.
+        Retried like any read, on connection failures, 5xx and 429: the call
+        never changes the order. The API supports orders with at most 3
+        receivers and answers others with a 422, raised as
+        ``HuurayValidationError``; an unknown order or voucher is a 404, raised
+        as ``HuurayNotFoundError``. This client checks neither.
 
         A PDF can take a while to render and run to several MB, so build the
         client with a longer ``timeout`` for these calls, e.g. ``timeout=100.0``.
@@ -297,7 +278,8 @@ class PdfsResource(Resource):
         seconds, at least 1, or 30 without one, and every request is signed
         with a new nonce. Any 2xx other than 200 is treated like 202 (not
         ready); any non-2xx ends the wait with an exception, after the retries
-        any read gets on a 5xx.
+        any read gets on a 5xx or a 429. A 429 that outlives them raises
+        :class:`~huuray.HuurayRateLimitError`.
 
         :param max_wait: Seconds to keep asking, 10 minutes by default. When the
             next wait would pass it, :class:`~huuray.HuurayTimeoutError` is
