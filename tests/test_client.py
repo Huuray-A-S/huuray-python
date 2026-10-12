@@ -30,6 +30,7 @@ from huuray import (
 )
 from huuray.auth import sign_request
 from huuray.resources._base import Operation
+from huuray.retry import backoff_delay
 
 from .helpers import (
     MockResponse,
@@ -39,6 +40,9 @@ from .helpers import (
     rate_limited,
     record_retry_sleeps,
 )
+
+#: The longest ``RetryOptions.max_delay`` kept, in seconds.
+LONGEST_DELAY = 2_147_483.647
 
 
 def assert_not_quoted(error: BaseException, marker: str) -> None:
@@ -571,6 +575,37 @@ class TestRetryPolicy:
         client.balances.list()
         assert len(calls) == 1
 
+    @pytest.mark.parametrize(
+        ("given", "kept"),
+        [
+            (float("inf"), LONGEST_DELAY),
+            (1e10, LONGEST_DELAY),
+            (2_147_483.648, LONGEST_DELAY),
+            (LONGEST_DELAY, LONGEST_DELAY),
+            (30, 30.0),
+            (-1, 0.0),
+            (float("nan"), 0.0),
+        ],
+    )
+    def test_clamps_max_delay_to_what_a_sleep_honours_on_every_platform(self, given, kept):
+        # 2147483647 ms. Above 4294967 seconds, time.sleep() raises OverflowError
+        # on Windows with Python 3.9.
+        assert RetryOptions(max_delay=given).max_delay == kept
+
+    def test_the_backoff_stays_within_the_clamped_max_delay(self, monkeypatch):
+        monkeypatch.setattr("huuray.retry.random.random", lambda: 1.0)
+        unbounded = RetryOptions(base_delay=float("inf"), max_delay=float("inf"))
+        assert backoff_delay(0, unbounded) == LONGEST_DELAY
+
+    @pytest.mark.parametrize("attempt", [1023, 1024, 5000])
+    def test_the_backoff_of_a_very_late_attempt_is_max_delay_not_an_overflow(
+        self, monkeypatch, attempt
+    ):
+        # float(2**1024) raises OverflowError.
+        monkeypatch.setattr("huuray.retry.random.random", lambda: 1.0)
+        assert backoff_delay(attempt, RetryOptions(max_retries=6000)) == 4.0
+        assert backoff_delay(attempt, RetryOptions(max_retries=6000, base_delay=0)) == 0.0
+
     def test_the_default_policy_retries_reads(self, monkeypatch):
         # Constructed with NO `retry` argument at all, bypassing make_client's
         # setdefault: this is the only test that exercises the DEFAULT_RETRY
@@ -802,6 +837,29 @@ class TestRateLimitedReads:
         assert sleeps == [30]
         assert len(calls) == 2
 
+    def test_a_retry_after_too_long_for_any_sleep_is_raised_whatever_the_max_delay(self):
+        # The real time.sleep(): it raises OverflowError for a wait this long.
+        client, calls = make_client(
+            [rate_limited("9" * 400)], retry=RetryOptions(max_retries=2, max_delay=float("inf"))
+        )
+        with pytest.raises(HuurayRateLimitError) as caught:
+            client.balances.list()
+        assert caught.value.retry_after == int("9" * 400)
+        assert len(calls) == 1
+
+    def test_the_longest_max_delay_is_still_the_longest_retry_after_waited(self, sleeps):
+        unbounded = RetryOptions(max_retries=1, max_delay=float("inf"))
+        client, calls = make_client([rate_limited("2147483"), BALANCES], retry=unbounded)
+        client.balances.list()
+        assert sleeps == [2147483]
+        assert len(calls) == 2
+
+        client, calls = make_client([rate_limited("2147484")], retry=unbounded)
+        with pytest.raises(HuurayRateLimitError):
+            client.balances.list()
+        assert sleeps == [2147483]
+        assert len(calls) == 1
+
     def test_the_one_second_floor_is_what_must_fit_max_delay(self, sleeps):
         client, calls = make_client(
             [rate_limited("0")], retry=RetryOptions(max_retries=2, max_delay=0.5)
@@ -889,6 +947,34 @@ class TestAsyncRateLimitedReads:
         assert async_sleeps == [2]
         assert len(calls) == 2
         assert len({call.headers["x-api-nonce"] for call in calls}) == 2
+
+    async def test_a_retry_after_too_long_for_any_sleep_is_raised_whatever_the_max_delay(self):
+        # The real asyncio.sleep(): it raises OverflowError for a wait this long.
+        client, calls = make_async_client(
+            [rate_limited("9" * 400)], retry=RetryOptions(max_retries=2, max_delay=float("inf"))
+        )
+        async with client:
+            with pytest.raises(HuurayRateLimitError) as caught:
+                await client.balances.list()
+        assert caught.value.retry_after == int("9" * 400)
+        assert len(calls) == 1
+
+    async def test_the_longest_max_delay_is_still_the_longest_retry_after_waited(
+        self, async_sleeps
+    ):
+        unbounded = RetryOptions(max_retries=1, max_delay=float("inf"))
+        client, calls = make_async_client([rate_limited("2147483"), BALANCES], retry=unbounded)
+        async with client:
+            await client.balances.list()
+        assert async_sleeps == [2147483]
+        assert len(calls) == 2
+
+        client, calls = make_async_client([rate_limited("2147484")], retry=unbounded)
+        async with client:
+            with pytest.raises(HuurayRateLimitError):
+                await client.balances.list()
+        assert async_sleeps == [2147483]
+        assert len(calls) == 1
 
     @pytest.mark.parametrize("read", READS.values(), ids=READS)
     async def test_every_operation_the_client_repeats_awaits_retry_after(self, async_sleeps, read):

@@ -43,6 +43,18 @@ MIN_WAIT = 1
 #: reads as absent.
 _DELTA_SECONDS = re.compile(r"[0-9]+")
 
+#: The longest ``max_delay`` kept, in seconds: 2147483647 ms, about 24.8 days.
+#:
+#: No wait between two attempts is longer than ``max_delay``, so this is what
+#: keeps every wait within what a sleep honours. Past its own limit
+#: ``time.sleep()`` raises ``OverflowError`` (above 4294967 seconds on Windows
+#: with Python 3.9), and ``asyncio.sleep()`` does for a wait too large for a
+#: float.
+_MAX_DELAY = 2_147_483.647
+
+#: The largest power of two the backoff doubles to: a float holds no larger one.
+_MAX_DOUBLINGS = 1023
+
 
 @dataclass(frozen=True)
 class RetryOptions:
@@ -51,8 +63,12 @@ class RetryOptions:
     :param max_retries: Attempts after the first. ``0`` disables retrying.
     :param base_delay: Base delay in seconds; doubles per attempt, with jitter.
     :param max_delay: Ceiling for a single backoff wait, in seconds. Also the
-        longest ``Retry-After`` waited on after a 429: a longer one raises
-        :class:`~huuray.HuurayRateLimitError` at once.
+        longest wait taken after a 429: when that wait (the ``Retry-After``, at
+        least 1 second) is longer, :class:`~huuray.HuurayRateLimitError` is
+        raised at once. So with a ``max_delay`` below 1 second, a 429 that
+        carries a ``Retry-After`` in whole seconds is never retried. Kept within
+        0 and 2147483.647 (about 24.8 days), the longest wait a sleep honours on
+        every platform: a value outside that is clamped.
     """
 
     max_retries: int = 2
@@ -65,7 +81,9 @@ class RetryOptions:
         # retrying. Frozen dataclass, so normalise through object.__setattr__.
         object.__setattr__(self, "max_retries", max(0, int(self.max_retries)))
         object.__setattr__(self, "base_delay", max(0.0, float(self.base_delay)))
-        object.__setattr__(self, "max_delay", max(0.0, float(self.max_delay)))
+        # Bounded above too: no wait is longer than max_delay, so whatever fits
+        # within it must also be a wait the sleep takes without raising.
+        object.__setattr__(self, "max_delay", min(max(0.0, float(self.max_delay)), _MAX_DELAY))
 
 
 #: The policy applied when the client is built without a ``retry`` argument.
@@ -85,7 +103,10 @@ def backoff_delay(attempt: int, options: RetryOptions) -> float:
     # The float() is load-bearing, not decoration: ``int ** int`` is typed as
     # Any (a negative exponent would produce a float), and an Any leaking into
     # this arithmetic would disable type checking of the whole delay expression.
-    exponential = min(options.base_delay * float(2**attempt), options.max_delay)
+    # The exponent is capped: past it float() raises OverflowError, on a policy
+    # with more than 1024 retries.
+    doubled = float(2 ** min(attempt, _MAX_DOUBLINGS))
+    exponential = min(options.base_delay * doubled, options.max_delay)
     # random, not secrets: this is jitter to desynchronise clients, not a secret.
     return random.random() * exponential
 

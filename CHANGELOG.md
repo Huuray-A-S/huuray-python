@@ -75,6 +75,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `HuurayRateLimitError` is raised at once, as it is when the retries are used up.
   Without a usable `Retry-After` the backoff applies, as before. A 429 used to be a
   plain `HuurayAPIError`.
+- `RetryOptions.max_delay` is clamped to 2147483.647 seconds (about 24.8 days), the
+  longest wait a sleep honours on every platform, so no wait between two attempts can
+  raise `OverflowError`.
 - Orders, resends, cancels and uploads are still never retried: a 429 raises
   `HuurayRateLimitError`, never `HuurayIndeterminateOrderError`.
   `pdfs.get_when_ready()` ends its wait with that error when a 429 outlives the read
