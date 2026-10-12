@@ -30,7 +30,7 @@ from huuray import (
 )
 from huuray.auth import sign_request
 from huuray.resources._base import Operation
-from huuray.retry import backoff_delay
+from huuray.retry import backoff_delay, retry_after_seconds
 
 from .helpers import (
     MockResponse,
@@ -729,6 +729,16 @@ class TestRateLimitMapping:
         assert caught.value.retry_after == 7
         assert caught.value.status_message is None
 
+    @pytest.mark.parametrize(
+        "header",
+        [chr(0x661) + chr(0x662), chr(0xFF11) + chr(0xFF12), "1" + chr(0x662)],
+        ids=["arabic-indic", "fullwidth", "mixed"],
+    )
+    def test_reads_only_ascii_digits_as_seconds(self, header):
+        # Digits to int() and to a regex \d, which would both read 12 here.
+        assert int(header) == 12
+        assert retry_after_seconds(header) is None
+
     def test_from_response_without_headers_has_no_retry_after(self):
         error = HuurayAPIError.from_response(429, {"Status": 429}, "GET", "/v4/Balance")
         assert type(error) is HuurayRateLimitError
@@ -787,6 +797,30 @@ class TestRateLimitedReads:
         assert sleeps == [2]
         assert len(calls) == 2
         assert len({call.headers["x-api-nonce"] for call in calls}) == 2
+
+    def test_a_retry_after_shorter_than_the_backoff_still_replaces_it(self, sleeps, monkeypatch):
+        # Not the longer of the two, and not their sum.
+        monkeypatch.setattr("huuray.client.backoff_delay", lambda *_a, **_k: 3.5)
+        client, calls = make_client([rate_limited("2"), BALANCES], retry=RETRYING)
+        client.balances.list()
+        assert sleeps == [2]
+        assert len(calls) == 2
+
+    def test_a_429_without_retry_after_is_signed_again_too(self, sleeps):
+        client, calls = make_client([rate_limited(None), BALANCES], retry=RETRYING)
+        client.balances.list()
+        assert sleeps == [BACKOFF]
+        assert len(calls) == 2
+        assert len({call.headers["x-api-nonce"] for call in calls}) == 2
+
+    @pytest.mark.parametrize("status", [408, 425, 500, 502, 503, 504])
+    def test_a_retry_after_on_any_other_status_is_ignored(self, sleeps, status):
+        client, calls = make_client(
+            [MockResponse(status=status, headers={"Retry-After": "3"}), BALANCES], retry=RETRYING
+        )
+        client.balances.list()
+        assert sleeps == [BACKOFF]
+        assert len(calls) == 2
 
     @pytest.mark.parametrize("read", READS.values(), ids=READS)
     def test_every_operation_the_client_repeats_waits_retry_after(self, sleeps, read):
@@ -962,6 +996,41 @@ class TestAsyncRateLimitedReads:
         assert async_sleeps == [2]
         assert len(calls) == 2
         assert len({call.headers["x-api-nonce"] for call in calls}) == 2
+
+    async def test_a_retry_after_shorter_than_the_backoff_still_replaces_it(
+        self, async_sleeps, monkeypatch
+    ):
+        monkeypatch.setattr("huuray.client.backoff_delay", lambda *_a, **_k: 3.5)
+        client, calls = make_async_client([rate_limited("2"), BALANCES], retry=RETRYING)
+        async with client:
+            await client.balances.list()
+        assert async_sleeps == [2]
+        assert len(calls) == 2
+
+    async def test_a_429_without_retry_after_is_signed_again_too(self, async_sleeps):
+        client, calls = make_async_client([rate_limited(None), BALANCES], retry=RETRYING)
+        async with client:
+            await client.balances.list()
+        assert async_sleeps == [BACKOFF]
+        assert len(calls) == 2
+        assert len({call.headers["x-api-nonce"] for call in calls}) == 2
+
+    @pytest.mark.parametrize("status", [408, 425, 500, 502, 503, 504])
+    async def test_a_retry_after_on_any_other_status_is_ignored(self, async_sleeps, status):
+        client, calls = make_async_client(
+            [MockResponse(status=status, headers={"Retry-After": "3"}), BALANCES], retry=RETRYING
+        )
+        async with client:
+            await client.balances.list()
+        assert async_sleeps == [BACKOFF]
+        assert len(calls) == 2
+
+    async def test_a_retry_after_equal_to_max_delay_is_waited(self, async_sleeps):
+        client, calls = make_async_client([rate_limited("4"), BALANCES], retry=RETRYING)
+        async with client:
+            await client.balances.list()
+        assert async_sleeps == [4]
+        assert len(calls) == 2
 
     async def test_a_retry_after_too_long_for_any_sleep_is_raised_whatever_the_max_delay(self):
         # The real asyncio.sleep(): it raises OverflowError for a wait this long.

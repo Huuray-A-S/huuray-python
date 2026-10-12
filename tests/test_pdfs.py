@@ -818,6 +818,23 @@ class TestGetWhenReady:
         assert retry_sleeps == []
         assert len(calls) == 1
 
+    def test_a_retry_wait_is_never_refused_or_shortened_for_max_wait(self, clock, retry_sleeps):
+        # max_wait would not cover it: only a wait after a 202 is checked against it.
+        client, calls = make_client([rate_limited("4"), ready()], retry=RETRYING)
+        assert client.pdfs.get_when_ready(order_uid=ORDER_UID, max_wait=2) == READY_RESULT
+        assert retry_sleeps == [4]
+        assert clock.sleeps == []
+        assert len(calls) == 2
+
+    def test_the_time_a_retry_wait_takes_counts_towards_max_wait(self, clock, monkeypatch):
+        # 4 of the 10 seconds pass in the retry wait, so the 7 the 202 asks for no longer fit.
+        monkeypatch.setattr("huuray.client._sleep", clock.sleep)
+        client, calls = make_client([rate_limited("4"), not_ready("7")], retry=RETRYING)
+        with pytest.raises(HuurayTimeoutError):
+            client.pdfs.get_when_ready(order_uid=ORDER_UID, max_wait=10)
+        assert clock.sleeps == [4]
+        assert len(calls) == 2
+
     @pytest.mark.parametrize(
         "max_wait", [-1, -0.001, float("nan"), float("inf"), True, "600", None]
     )
@@ -923,6 +940,28 @@ class TestAsyncGetWhenReady:
         assert async_clock.sleeps == [1]
         assert async_retry_sleeps == [2, 2]
         assert len(calls) == 4
+
+    async def test_a_retry_wait_is_never_refused_or_shortened_for_max_wait(
+        self, async_clock, async_retry_sleeps
+    ):
+        client, calls = make_async_client([rate_limited("4"), ready()], retry=RETRYING)
+        async with client:
+            result = await client.pdfs.get_when_ready(order_uid=ORDER_UID, max_wait=2)
+        assert result == READY_RESULT
+        assert async_retry_sleeps == [4]
+        assert async_clock.sleeps == []
+        assert len(calls) == 2
+
+    async def test_the_time_a_retry_wait_takes_counts_towards_max_wait(
+        self, async_clock, monkeypatch
+    ):
+        monkeypatch.setattr("huuray.client._async_sleep", async_clock.async_sleep)
+        client, calls = make_async_client([rate_limited("4"), not_ready("7")], retry=RETRYING)
+        async with client:
+            with pytest.raises(HuurayTimeoutError):
+                await client.pdfs.get_when_ready(order_uid=ORDER_UID, max_wait=10)
+        assert async_clock.sleeps == [4]
+        assert len(calls) == 2
 
     async def test_rejects_a_bad_max_wait_before_sending(self, async_clock):
         client, calls = make_async_client([ready()])
