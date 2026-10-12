@@ -734,6 +734,21 @@ class TestRateLimitMapping:
         assert type(error) is HuurayRateLimitError
         assert error.retry_after is None
 
+    @pytest.mark.parametrize("name", ["Retry-After", "retry-after", "RETRY-AFTER"])
+    def test_from_response_reads_retry_after_from_a_plain_dict_whatever_its_case(self, name):
+        error = HuurayAPIError.from_response(
+            429, {"Status": 429}, "GET", "/v4/Balance", {"Content-Type": "text/html", name: "5"}
+        )
+        assert type(error) is HuurayRateLimitError
+        assert error.retry_after == 5
+
+    def test_from_response_without_a_retry_after_among_the_headers_has_none(self):
+        error = HuurayAPIError.from_response(
+            429, {"Status": 429}, "GET", "/v4/Balance", {"Retry-After-Hint": "5"}
+        )
+        assert isinstance(error, HuurayRateLimitError)
+        assert error.retry_after is None
+
     def test_retry_after_is_read_for_a_429_only(self):
         client, _ = make_client(MockResponse(status=503, headers={"Retry-After": "7"}))
         with pytest.raises(HuurayServerError) as caught:

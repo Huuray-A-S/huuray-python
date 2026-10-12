@@ -21,6 +21,17 @@ from .redact import redact
 from .retry import retry_after_seconds
 
 
+def _header(headers: Mapping[str, str] | None, name: str) -> str | None:
+    """A header's value from any mapping, its name matched whatever the case."""
+    if headers is None:
+        return None
+    wanted = name.lower()
+    for key, value in headers.items():
+        if isinstance(key, str) and key.lower() == wanted:
+            return value
+    return None
+
+
 class HuurayError(Exception):
     """Base class for everything this library raises. Catch it to catch them all."""
 
@@ -100,6 +111,7 @@ class HuurayAPIError(HuurayError):
         """Build the most specific error class for an HTTP status.
 
         ``headers`` are the response headers: a 429 carries ``Retry-After``.
+        Any mapping will do: the name is matched whatever its case.
         """
         fields = body if isinstance(body, dict) else {}
         status_message = fields.get("StatusMessage") or fields.get("Message")
@@ -127,7 +139,7 @@ class HuurayAPIError(HuurayError):
         if http_status == 422:
             return HuurayValidationError(*args)
         if http_status == 429:
-            retry_after = None if headers is None else headers.get("Retry-After")
+            retry_after = _header(headers, "Retry-After")
             return HuurayRateLimitError(*args, retry_after=retry_after_seconds(retry_after))
         if http_status >= 500:
             return HuurayServerError(*args)
